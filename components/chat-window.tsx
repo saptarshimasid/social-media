@@ -564,7 +564,7 @@ export default function ChatWindow() {
               filteredFriends.map((friend) => {
                 const friendUnreadCount = chatNotifications.filter((n) => n.sender_id === friend.id).length;
                 return (
-                  <button
+                  <div
                     key={friend.id}
                     onClick={() => setActivePartner(friend)}
                     className="w-full flex items-center gap-2.5 p-2 rounded-xl text-left hover:bg-secondary transition-colors cursor-pointer"
@@ -614,7 +614,7 @@ export default function ChatWindow() {
                         }`}
                       />
                     </div>
-                  </button>
+                  </div>
                 );
               })
             ) : (

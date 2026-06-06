@@ -580,7 +580,7 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
               const isActive = activeConversationId === c.conversation_id;
               const partnerUnreadCount = chatNotifications.filter((n) => n.sender_id === c.profiles.id).length;
               return (
-                <button
+                <div
                   key={c.conversation_id}
                   onClick={() => {
                     setActiveConversationId(c.conversation_id);
@@ -626,7 +626,7 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
                       @{c.profiles.username}
                     </p>
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>
