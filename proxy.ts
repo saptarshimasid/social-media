@@ -1,7 +1,17 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
+  // Allow API and static assets/routes without interference early on
+  const isApiOrStatic =
+    request.nextUrl.pathname.startsWith("/api") ||
+    request.nextUrl.pathname.includes(".") ||
+    request.nextUrl.pathname.startsWith("/_next");
+
+  if (isApiOrStatic) {
+    return NextResponse.next();
+  }
+
   let response = NextResponse.next({
     request: {
       headers: request.headers,
@@ -19,36 +29,32 @@ export async function middleware(request: NextRequest) {
         },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
+            request.cookies.set(name, value),
           );
           response = NextResponse.next({
             request,
           });
           cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
+            response.cookies.set(name, value, options),
           );
         },
       },
-    }
+    },
   );
 
   // Safely refresh token session
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  let user = null;
+  try {
+    const {
+      data: { user: fetchedUser },
+    } = await supabase.auth.getUser();
+    user = fetchedUser;
+  } catch (error) {
+    console.error("Supabase auth error in proxy.ts:", error);
+  }
 
   const isAuthPage = request.nextUrl.pathname.startsWith("/login");
   const isOnboardingPage = request.nextUrl.pathname.startsWith("/onboarding");
-
-  // Allow next-auth and other standard assets/routes without interference
-  const isApiOrStatic =
-    request.nextUrl.pathname.startsWith("/api") ||
-    request.nextUrl.pathname.includes(".") ||
-    request.nextUrl.pathname.startsWith("/_next");
-
-  if (isApiOrStatic) {
-    return response;
-  }
 
   // Case 1: Unauthenticated
   if (!user) {
@@ -64,11 +70,17 @@ export async function middleware(request: NextRequest) {
   }
 
   // Fetch user profile status from DB
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("username")
-    .eq("id", user.id)
-    .single();
+  let profile = null;
+  try {
+    const { data: fetchedProfile } = await supabase
+      .from("profiles")
+      .select("username")
+      .eq("id", user.id)
+      .single();
+    profile = fetchedProfile;
+  } catch (error) {
+    console.error("Supabase profile fetch error in proxy.ts:", error);
+  }
 
   if (!profile) {
     // Authenticated but no profile in DB -> redirect to onboarding page

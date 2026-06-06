@@ -120,6 +120,74 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     }
   };
 
+  // Check if today is the birthday of any friend, and trigger notifications
+  const checkBirthdays = useCallback(async () => {
+    if (!user) return;
+    try {
+      // 1. Fetch friendships
+      const { data: friendships, error: friendErr } = await supabase
+        .from("friendships")
+        .select("user_id1, user_id2")
+        .or(`user_id1.eq.${user.id},user_id2.eq.${user.id}`);
+
+      if (friendErr || !friendships) return;
+
+      const friendIds = friendships.map((f) =>
+        f.user_id1 === user.id ? f.user_id2 : f.user_id1
+      );
+
+      if (friendIds.length === 0) return;
+
+      // 2. Fetch friends' profiles to check birth dates
+      const { data: friendsProfiles } = await supabase
+        .from("profiles")
+        .select("id, full_name, username, birth_date")
+        .in("id", friendIds);
+
+      if (!friendsProfiles) return;
+
+      const today = new Date();
+      const currentMonth = today.getMonth();
+      const currentDay = today.getDate();
+
+      const birthdayFriends = friendsProfiles.filter((p) => {
+        if (!p.birth_date) return false;
+        const bday = new Date(p.birth_date);
+        return bday.getMonth() === currentMonth && bday.getDate() === currentDay;
+      });
+
+      if (birthdayFriends.length === 0) return;
+
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+
+      // 3. For each birthday friend, check if notification exists for today
+      for (const friend of birthdayFriends) {
+        const { data: existing } = await supabase
+          .from("notifications")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("sender_id", friend.id)
+          .eq("target_type", "birthday")
+          .gte("created_at", todayStart.toISOString());
+
+        if (!existing || existing.length === 0) {
+          // Create a birthday notification
+          await supabase.from("notifications").insert({
+            user_id: user.id,
+            sender_id: friend.id,
+            type: "comment",
+            target_type: "birthday",
+            target_id: friend.id,
+            is_read: false,
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Failed to run birthday check:", err);
+    }
+  }, [user, supabase]);
+
   // Setup Real-Time Notifications subscription on mount/user change
   useEffect(() => {
     if (!user) {
@@ -130,9 +198,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       return () => clearTimeout(timer);
     }
 
-    // Load initial count and list immediately
+    // Load initial count, list, and check birthdays immediately
     fetchUnreadCount();
     fetchNotifications();
+    checkBirthdays();
 
     // Polling fallback every 8 seconds for reliability
     const pollInterval = setInterval(() => {

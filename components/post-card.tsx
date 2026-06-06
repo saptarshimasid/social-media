@@ -4,12 +4,31 @@ import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
-import { MessageSquare, Trash2, MoreHorizontal, Share2 } from "lucide-react";
+import { MessageSquare, Trash2, MoreHorizontal, Share2, Play } from "lucide-react";
 import { useAuth } from "./auth-provider";
 import { createClient } from "@/lib/supabase";
 import UserAvatar from "./user-avatar";
 import CommentSection from "./comment-section";
 import { Tag } from "lucide-react";
+
+function getYouTubeId(url: string | null) {
+  if (!url) return null;
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+  const match = url.match(regExp);
+  return match && match[2].length === 11 ? match[2] : null;
+}
+
+function extractYouTubeId(text: string | null) {
+  if (!text) return null;
+  const words = text.split(/\s+/);
+  for (const word of words) {
+    if (word.includes("youtube.com") || word.includes("youtu.be")) {
+      const id = getYouTubeId(word);
+      if (id) return id;
+    }
+  }
+  return null;
+}
 
 export interface PostMedia {
   id: string;
@@ -39,7 +58,14 @@ interface PostCardProps {
   onPostShared?: () => void;
 }
 
-type ReactionEmoji = "Like" | "Love" | "Care" | "Haha" | "Wow" | "Sad" | "Angry";
+type ReactionEmoji =
+  | "Like"
+  | "Love"
+  | "Care"
+  | "Haha"
+  | "Wow"
+  | "Sad"
+  | "Angry";
 
 const EMOJIS: Record<ReactionEmoji, string> = {
   Like: "👍",
@@ -51,9 +77,15 @@ const EMOJIS: Record<ReactionEmoji, string> = {
   Angry: "😡",
 };
 
-export default function PostCard({ post, onPostDeleted, onPostShared }: PostCardProps) {
+export default function PostCard({
+  post,
+  onPostDeleted,
+  onPostShared,
+}: PostCardProps) {
   const { user } = useAuth();
-  const [reactions, setReactions] = useState<{ type: ReactionEmoji; count: number }[]>([]);
+  const [reactions, setReactions] = useState<
+    { type: ReactionEmoji; count: number }[]
+  >([]);
   const [userReaction, setUserReaction] = useState<ReactionEmoji | null>(null);
   const [showPicker, setShowPicker] = useState(false);
   const [showComments, setShowComments] = useState(false);
@@ -62,8 +94,12 @@ export default function PostCard({ post, onPostDeleted, onPostShared }: PostCard
   const [deleting, setDeleting] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [shared, setShared] = useState(false);
-  const [taggedUsers, setTaggedUsers] = useState<{full_name: string; username: string}[]>([]);
+  const [taggedUsers, setTaggedUsers] = useState<
+    { full_name: string; username: string }[]
+  >([]);
+  const [playYoutube, setPlayYoutube] = useState(false);
 
+  const youtubeId = extractYouTubeId(post.content);
   const supabase = createClient();
   const isOwner = user?.id === post.user_id;
 
@@ -125,7 +161,7 @@ export default function PostCard({ post, onPostDeleted, onPostShared }: PostCard
                 full_name: (p?.full_name as string) || "User",
                 username: (p?.username as string) || "",
               };
-            })
+            }),
           );
         }
       } catch (err) {
@@ -156,7 +192,7 @@ export default function PostCard({ post, onPostDeleted, onPostShared }: PostCard
         setReactions((prev) =>
           prev
             .map((r) => (r.type === emoji ? { ...r, count: r.count - 1 } : r))
-            .filter((r) => r.count > 0)
+            .filter((r) => r.count > 0),
         );
       } else {
         // Add/Change reaction (Upsert with conflict target)
@@ -167,7 +203,7 @@ export default function PostCard({ post, onPostDeleted, onPostShared }: PostCard
             target_id: post.id,
             type: emoji,
           },
-          { onConflict: "user_id,target_type,target_id" }
+          { onConflict: "user_id,target_type,target_id" },
         );
 
         if (error) throw error;
@@ -191,12 +227,16 @@ export default function PostCard({ post, onPostDeleted, onPostShared }: PostCard
           // Decrement previous if changed
           if (userReaction) {
             updated = updated
-              .map((r) => (r.type === userReaction ? { ...r, count: r.count - 1 } : r))
+              .map((r) =>
+                r.type === userReaction ? { ...r, count: r.count - 1 } : r,
+              )
               .filter((r) => r.count > 0);
           }
 
           if (exists) {
-            return updated.map((r) => (r.type === emoji ? { ...r, count: r.count + 1 } : r));
+            return updated.map((r) =>
+              r.type === emoji ? { ...r, count: r.count + 1 } : r,
+            );
           } else {
             return [...updated, { type: emoji, count: 1 }];
           }
@@ -213,8 +253,8 @@ export default function PostCard({ post, onPostDeleted, onPostShared }: PostCard
     setSharing(true);
     try {
       // Create a new post representing the repost
-      const repostText = post.content 
-        ? `🔄 Reposted from @${post.profiles.username}: ${post.content}` 
+      const repostText = post.content
+        ? `🔄 Reposted from @${post.profiles.username}: ${post.content}`
         : `🔄 Reposted from @${post.profiles.username}`;
 
       const { data: newPost, error: postErr } = await supabase
@@ -283,44 +323,30 @@ export default function PostCard({ post, onPostDeleted, onPostShared }: PostCard
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <Link
-          href={`/profile/${post.profiles.username}`}
-          className="flex items-center gap-3"
-        >
-          <UserAvatar
-            src={post.profiles.profile_picture_url}
-            name={post.profiles.full_name}
-            size={40}
-          />
-          <div className="flex flex-col">
-            <div className="flex items-center gap-1 flex-wrap">
+        <div className="flex items-center gap-3">
+          <Link
+            href={`/profile/${post.profiles.username}`}
+            className="flex items-center gap-3"
+          >
+            <UserAvatar
+              src={post.profiles.profile_picture_url}
+              name={post.profiles.full_name}
+              size={40}
+            />
+            <div className="flex flex-col">
               <span className="text-sm font-semibold text-foreground hover:text-primary transition-colors">
                 {post.profiles.full_name}
               </span>
-              {taggedUsers.length > 0 && (
-                <span className="text-xs text-muted">
-                  with{" "}
-                  {taggedUsers.slice(0, 2).map((t, i) => (
-                    <React.Fragment key={t.username}>
-                      {i > 0 && ", "}
-                      <Link href={`/profile/${t.username}`} className="font-semibold text-primary hover:underline">
-                        {t.full_name}
-                      </Link>
-                    </React.Fragment>
-                  ))}
-                  {taggedUsers.length > 2 && (
-                    <span> and {taggedUsers.length - 2} others</span>
-                  )}
+              <span className="text-[10px] text-muted flex items-center gap-1.5 leading-none mt-1">
+                <span>@{post.profiles.username}</span>
+                <span className="w-1 h-1 bg-muted rounded-full" />
+                <span>
+                  {formatDistanceToNow(new Date(post.created_at))} ago
                 </span>
-              )}
+              </span>
             </div>
-            <span className="text-[10px] text-muted flex items-center gap-1.5 leading-none mt-1">
-              <span>@{post.profiles.username}</span>
-              <span className="w-1 h-1 bg-muted rounded-full" />
-              <span>{formatDistanceToNow(new Date(post.created_at))} ago</span>
-            </span>
-          </div>
-        </Link>
+          </Link>
+        </div>
 
         {isOwner && (
           <div className="relative">
@@ -356,11 +382,64 @@ export default function PostCard({ post, onPostDeleted, onPostShared }: PostCard
         )}
       </div>
 
+      {taggedUsers.length > 0 && (
+        <div className="mb-3 text-xs text-muted pl-[calc(40px+0.75rem)]">
+          with{" "}
+          {taggedUsers.slice(0, 2).map((t, i) => (
+            <React.Fragment key={t.username}>
+              {i > 0 && ", "}
+              <Link
+                href={`/profile/${t.username}`}
+                className="font-semibold text-primary hover:underline"
+              >
+                {t.full_name}
+              </Link>
+            </React.Fragment>
+          ))}
+          {taggedUsers.length > 2 && (
+            <span> and {taggedUsers.length - 2} others</span>
+          )}
+        </div>
+      )}
+
       {/* Content text */}
       {post.content && (
         <p className="text-sm text-foreground/90 whitespace-pre-wrap mb-4 leading-relaxed">
           {post.content}
         </p>
+      )}
+
+      {/* YouTube Link Preview Embed */}
+      {youtubeId && (
+        <div className="mb-4">
+          {playYoutube ? (
+            <div className="relative aspect-video rounded-2xl overflow-hidden border border-border/20 shadow-sm">
+              <iframe
+                src={`https://www.youtube.com/embed/${youtubeId}?autoplay=1`}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                className="absolute inset-0 w-full h-full border-none"
+              />
+            </div>
+          ) : (
+            <div
+              onClick={() => setPlayYoutube(true)}
+              className="relative aspect-video rounded-2xl overflow-hidden border border-border/20 shadow-sm cursor-pointer group bg-black"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`https://img.youtube.com/vi/${youtubeId}/hqdefault.jpg`}
+                alt="YouTube video thumbnail"
+                className="w-full h-full object-cover opacity-85 group-hover:scale-105 group-hover:opacity-90 transition-all duration-300"
+              />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-16 h-11 bg-rose-600 rounded-2xl flex items-center justify-center text-white shadow-lg group-hover:bg-rose-700 transition-colors group-hover:scale-110 duration-200">
+                  <Play size={20} className="fill-white pl-0.5" />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Media Attachments Grid */}
@@ -370,8 +449,8 @@ export default function PostCard({ post, onPostDeleted, onPostShared }: PostCard
             post.post_media.length === 1
               ? "grid-cols-1"
               : post.post_media.length === 2
-              ? "grid-cols-2"
-              : "grid-cols-2"
+                ? "grid-cols-2"
+                : "grid-cols-2"
           }`}
         >
           {post.post_media.map((media) => {
@@ -398,6 +477,7 @@ export default function PostCard({ post, onPostDeleted, onPostShared }: PostCard
                       src={media.media_url}
                       alt="Post attachment"
                       fill
+                      sizes="100vw"
                       className="object-cover"
                     />
                   )
@@ -436,7 +516,8 @@ export default function PostCard({ post, onPostDeleted, onPostShared }: PostCard
             </div>
             {totalReactionsCount > 0 && (
               <span className="font-semibold text-foreground/80 pl-1">
-                {totalReactionsCount} {totalReactionsCount === 1 ? "reaction" : "reactions"}
+                {totalReactionsCount}{" "}
+                {totalReactionsCount === 1 ? "reaction" : "reactions"}
               </span>
             )}
           </div>

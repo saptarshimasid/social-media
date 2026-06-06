@@ -16,6 +16,24 @@ export interface Profile {
   age: number | null;
   created_at: string;
   updated_at: string;
+  birth_date: string | null;
+  gender: string | null;
+  hobbies: string | null;
+  relationship_status: string | null;
+  relationship_partner_id: string | null;
+  relationship_approved: boolean;
+  work_history: any[] | null;
+  interests: Record<string, string[]> | null;
+  address: string | null;
+  travel: any[] | null;
+  cover_photo_zoom: number | null;
+  cover_photo_x: number | null;
+  cover_photo_y: number | null;
+  profile_photo_zoom: number | null;
+  profile_photo_x: number | null;
+  profile_photo_y: number | null;
+  education: any[] | null;
+  online_status: string | null;
 }
 
 type AuthContextType = {
@@ -65,6 +83,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     setLoading(true);
+    if (user) {
+      await supabase.from("profiles").update({ online_status: "offline" }).eq("id", user.id);
+    }
     await supabase.auth.signOut();
     setUser(null);
     setProfile(null);

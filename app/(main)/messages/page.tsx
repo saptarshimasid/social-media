@@ -58,7 +58,7 @@ interface MessageReaction {
 
 export default function MessagesPage({ searchParams }: MessagesPageProps) {
   const { chat: targetUserId } = use(searchParams);
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
 
   const [conversations, setConversations] = useState<ChatParticipant[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
@@ -172,19 +172,24 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
         }
 
         // If not found, create new conversation
-        // Create conversation
-        const { data: newConv, error: newConvErr } = await supabase
+        const newConvId = typeof window !== "undefined" && window.crypto && window.crypto.randomUUID
+          ? window.crypto.randomUUID()
+          : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
+              const r = (Math.random() * 16) | 0;
+              const v = c === "x" ? r : (r & 0x3) | 0x8;
+              return v.toString(16);
+            });
+
+        const { error: newConvErr } = await supabase
           .from("conversations")
-          .insert({})
-          .select()
-          .single();
+          .insert({ id: newConvId });
 
         if (newConvErr) throw newConvErr;
 
         // Add participants
         const participantRows = [
-          { conversation_id: newConv.id, user_id: user.id },
-          { conversation_id: newConv.id, user_id: targetUserId },
+          { conversation_id: newConvId, user_id: user.id },
+          { conversation_id: newConvId, user_id: targetUserId },
         ];
 
         const { error: partErr } = await supabase
@@ -193,6 +198,8 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
 
         if (partErr) throw partErr;
 
+        setActiveConversationId(newConvId);
+
         // Fetch partner details to set partner state
         const { data: partnerProfile } = await supabase
           .from("profiles")
@@ -200,7 +207,6 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
           .eq("id", targetUserId)
           .single();
 
-        setActiveConversationId(newConv.id);
         setActivePartner(partnerProfile);
         await fetchConversationsList();
       } catch (err) {
@@ -301,7 +307,21 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
           },
         };
 
-        setMessages((prev) => [...prev, newMsg]);
+        setMessages((prev) => {
+          // Check if there is an optimistic match to replace
+          const optimisticIndex = prev.findIndex(
+            (m) =>
+              m.id.startsWith("optimistic-") &&
+              (m.content === newMsg.content || (m.image_url && newMsg.image_url))
+          );
+          if (optimisticIndex > -1) {
+            const next = [...prev];
+            next[optimisticIndex] = newMsg;
+            return next;
+          }
+          if (prev.some((m) => m.id === newMsg.id)) return prev;
+          return [...prev, newMsg];
+        });
       }
     );
 
@@ -358,6 +378,28 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeConversationId || (!inputText.trim() && !imageFile) || sending) return;
+    
+    const textToSend = inputText.trim();
+    const previewToSend = imagePreview;
+
+    // Create optimistic message to show immediately
+    const optimisticMsg: DBMessage = {
+      id: `optimistic-${Date.now()}`,
+      conversation_id: activeConversationId,
+      sender_id: user!.id,
+      content: textToSend || null,
+      image_url: previewToSend || null,
+      created_at: new Date().toISOString(),
+      profiles: {
+        full_name: profile?.full_name || "Me",
+        profile_picture_url: profile?.profile_picture_url || null,
+      },
+    };
+
+    setMessages((prev) => [...prev, optimisticMsg]);
+    setInputText("");
+    setImageFile(null);
+    setImagePreview(null);
     setSending(true);
 
     try {
@@ -383,7 +425,7 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
       const { error } = await supabase.from("messages").insert({
         conversation_id: activeConversationId,
         sender_id: user!.id,
-        content: inputText.trim() || null,
+        content: textToSend || null,
         image_url: imageUrl,
       });
 
@@ -400,14 +442,13 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
         });
       }
 
-      setInputText("");
-      setImageFile(null);
-      if (imagePreview) {
-        URL.revokeObjectURL(imagePreview);
-        setImagePreview(null);
+      if (previewToSend) {
+        URL.revokeObjectURL(previewToSend);
       }
     } catch (err) {
       console.error("Failed to send message:", err);
+      // Remove optimistic message if insert fails
+      setMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id));
     } finally {
       setSending(false);
     }

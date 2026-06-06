@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Plus, X, ChevronLeft, ChevronRight, Pause, Play, Volume2, VolumeX } from "lucide-react";
+import { Plus, X, ChevronLeft, ChevronRight, Pause, Play, Volume2, VolumeX, Music, Check } from "lucide-react";
 import { useAuth } from "./auth-provider";
 import { createClient } from "@/lib/supabase";
 import { convertToWebP } from "@/lib/image-utils";
@@ -14,6 +14,9 @@ interface StoryItem {
   media_url: string;
   media_type: string;
   created_at: string;
+  music_title?: string | null;
+  music_artist?: string | null;
+  music_url?: string | null;
 }
 
 interface StoryGroup {
@@ -23,6 +26,29 @@ interface StoryGroup {
   profile_picture_url: string | null;
   stories: StoryItem[];
 }
+
+const CURATED_SONGS = [
+  {
+    title: "Chill Lo-Fi Beat",
+    artist: "Lofi Dreamer",
+    url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+  },
+  {
+    title: "Acoustic Sunset",
+    artist: "Guitar Nomad",
+    url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+  },
+  {
+    title: "Synthwave Horizon",
+    artist: "Neon Rider",
+    url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3",
+  },
+  {
+    title: "Happy Ukulele",
+    artist: "Sunny Days",
+    url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3",
+  },
+];
 
 export default function StoriesBar() {
   const { user, profile } = useAuth();
@@ -38,6 +64,11 @@ export default function StoriesBar() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+
+  // Song selection modal state
+  const [pendingStoryFile, setPendingStoryFile] = useState<File | null>(null);
+  const [selectedMusicIdx, setSelectedMusicIdx] = useState<number | null>(null);
 
   const currentGroup = activeGroup !== null ? storyGroups[activeGroup] : null;
   const currentStory = currentGroup?.stories[activeStoryIdx] || null;
@@ -97,6 +128,9 @@ export default function StoriesBar() {
           media_url: s.media_url as string,
           media_type: s.media_type as string,
           created_at: s.created_at as string,
+          music_title: s.music_title as string | null,
+          music_artist: s.music_artist as string | null,
+          music_url: s.music_url as string | null,
         });
       });
 
@@ -120,14 +154,21 @@ export default function StoriesBar() {
     return () => clearTimeout(timer);
   }, [fetchStories]);
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUploadClick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !user) return;
+    if (file) {
+      setPendingStoryFile(file);
+      setSelectedMusicIdx(null); // default to no music
+    }
+  };
+
+  const submitStory = async () => {
+    if (!pendingStoryFile || !user) return;
     setUploading(true);
     try {
-      let fileToUpload = file;
-      if (file.type.startsWith("image/")) {
-        fileToUpload = await convertToWebP(file);
+      let fileToUpload = pendingStoryFile;
+      if (pendingStoryFile.type.startsWith("image/")) {
+        fileToUpload = await convertToWebP(pendingStoryFile);
       }
       const ext = fileToUpload.name.split(".").pop();
       const path = `${user.id}/story-${Date.now()}.${ext}`;
@@ -137,12 +178,19 @@ export default function StoriesBar() {
       const { data: urlData } = supabase.storage.from("posts").getPublicUrl(path);
       const mediaType = fileToUpload.type.startsWith("video") ? "video" : "image";
 
+      const music = selectedMusicIdx !== null ? CURATED_SONGS[selectedMusicIdx] : null;
+
       const { error: insertErr } = await supabase.from("stories").insert({
         user_id: user.id,
         media_url: urlData.publicUrl,
         media_type: mediaType,
+        music_title: music?.title || null,
+        music_artist: music?.artist || null,
+        music_url: music?.url || null,
       });
       if (insertErr) throw insertErr;
+
+      setPendingStoryFile(null);
       await fetchStories();
     } catch (err) {
       console.error("Failed to upload story:", err);
@@ -185,6 +233,17 @@ export default function StoriesBar() {
         videoRef.current.pause();
       } else {
         videoRef.current.play().catch(() => {});
+      }
+    }
+  }, [paused, activeStoryIdx]);
+
+  // Background audio play/pause synchronization
+  useEffect(() => {
+    if (audioRef.current) {
+      if (paused) {
+        audioRef.current.pause();
+      } else {
+        audioRef.current.play().catch(() => {});
       }
     }
   }, [paused, activeStoryIdx]);
@@ -240,6 +299,9 @@ export default function StoriesBar() {
                   src={profile.profile_picture_url}
                   name={profile.full_name}
                   size={64}
+                  zoom={profile.profile_photo_zoom || 1}
+                  x={profile.profile_photo_x || 0}
+                  y={profile.profile_photo_y || 0}
                 />
               ) : (
                 <div className="w-full h-full rounded-full bg-secondary" />
@@ -262,7 +324,7 @@ export default function StoriesBar() {
             type="file"
             accept="image/*,video/*"
             className="hidden"
-            onChange={handleUpload}
+            onChange={handleUploadClick}
           />
 
           {/* Story circles */}
@@ -286,6 +348,9 @@ export default function StoriesBar() {
                       src={group.profile_picture_url}
                       name={group.full_name}
                       size={60}
+                      zoom={group.stories[0]?.user_id === user?.id ? (profile?.profile_photo_zoom || 1) : 1}
+                      x={group.stories[0]?.user_id === user?.id ? (profile?.profile_photo_x || 0) : 0}
+                      y={group.stories[0]?.user_id === user?.id ? (profile?.profile_photo_y || 0) : 0}
                     />
                   </div>
                 </div>
@@ -297,6 +362,68 @@ export default function StoriesBar() {
           )}
         </div>
       </div>
+
+      {/* Choose Background Music Dialog Overlay */}
+      {pendingStoryFile && (
+        <div className="fixed inset-0 z-[120] bg-black/80 flex items-center justify-center p-4 backdrop-blur-md">
+          <div className="bg-card border border-border/40 rounded-3xl p-6 shadow-2xl max-w-sm w-full glass space-y-4">
+            <h3 className="font-bold text-base text-foreground flex items-center gap-2">
+              <Music size={18} className="text-primary" /> Add Background Music
+            </h3>
+            <p className="text-xs text-muted leading-relaxed">Select a background soundtrack to play in the background of your story.</p>
+            
+            {/* Curated Music Track List */}
+            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+              <button
+                onClick={() => setSelectedMusicIdx(null)}
+                className={`w-full text-left p-3 rounded-2xl text-xs font-semibold flex items-center justify-between border cursor-pointer transition-colors ${
+                  selectedMusicIdx === null
+                    ? "border-primary bg-primary/5 text-primary"
+                    : "border-border/40 hover:bg-secondary text-foreground"
+                }`}
+              >
+                <span>No Background Music</span>
+                {selectedMusicIdx === null && <Check size={14} />}
+              </button>
+
+              {CURATED_SONGS.map((song, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setSelectedMusicIdx(idx)}
+                  className={`w-full text-left p-3 rounded-2xl text-xs font-semibold flex items-center justify-between border cursor-pointer transition-colors ${
+                    selectedMusicIdx === idx
+                      ? "border-primary bg-primary/5 text-primary"
+                      : "border-border/40 hover:bg-secondary text-foreground"
+                  }`}
+                >
+                  <div className="flex flex-col">
+                    <span>{song.title}</span>
+                    <span className="text-[10px] text-muted font-normal mt-0.5">{song.artist}</span>
+                  </div>
+                  {selectedMusicIdx === idx && <Check size={14} />}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex gap-2.5 pt-2">
+              <button
+                onClick={() => setPendingStoryFile(null)}
+                className="flex-1 py-2.5 rounded-2xl border border-border hover:bg-secondary font-semibold text-xs text-foreground cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submitStory}
+                disabled={uploading}
+                className="flex-1 py-2.5 bg-primary text-primary-foreground hover:bg-primary/95 font-semibold text-xs rounded-2xl cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5 transition-all"
+              >
+                {uploading ? <LoadingSpinner size={14} /> : null}
+                <span>{uploading ? "Sharing..." : "Share Story"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Full-screen Story Player Modal */}
       {activeGroup !== null && currentStory && currentGroup && (
@@ -311,6 +438,19 @@ export default function StoriesBar() {
 
           {/* Story content */}
           <div className="relative w-full max-w-md h-full max-h-[100dvh] flex flex-col">
+            
+            {/* Background Audio Player */}
+            {currentStory.music_url && (
+              <audio
+                ref={audioRef}
+                key={currentStory.id}
+                src={currentStory.music_url}
+                autoPlay
+                loop
+                muted={muted}
+              />
+            )}
+
             {/* Progress bars */}
             <div className="absolute top-0 left-0 right-0 z-40 flex gap-1 px-3 pt-3">
               {currentGroup.stories.map((_, i) => (
@@ -336,6 +476,9 @@ export default function StoriesBar() {
                 src={currentGroup.profile_picture_url}
                 name={currentGroup.full_name}
                 size={36}
+                zoom={currentGroup.user_id === user?.id ? (profile?.profile_photo_zoom || 1) : 1}
+                x={currentGroup.user_id === user?.id ? (profile?.profile_photo_x || 0) : 0}
+                y={currentGroup.user_id === user?.id ? (profile?.profile_photo_y || 0) : 0}
               />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-white truncate">{currentGroup.full_name}</p>
@@ -357,6 +500,16 @@ export default function StoriesBar() {
               </button>
             </div>
 
+            {/* Music Badge Sticker Overlay */}
+            {currentStory.music_title && (
+              <div className="absolute top-20 left-3 bg-black/45 backdrop-blur-md border border-white/10 rounded-full px-3 py-1.5 flex items-center gap-2 z-40 max-w-[85%] shadow-md">
+                <Music size={12} className="text-primary animate-pulse" />
+                <span className="text-[10px] font-bold text-white truncate">
+                  {currentStory.music_title} - {currentStory.music_artist}
+                </span>
+              </div>
+            )}
+
             {/* Media */}
             <div className="flex-1 flex items-center justify-center bg-black overflow-hidden">
               {currentStory.media_type === "video" ? (
@@ -366,7 +519,7 @@ export default function StoriesBar() {
                   src={currentStory.media_url}
                   autoPlay
                   playsInline
-                  muted={muted}
+                  muted={muted || !!currentStory.music_url} // Mute video if story has custom background music playing
                   className="w-full h-full object-contain"
                   onPause={() => setPaused(true)}
                   onPlay={() => setPaused(false)}

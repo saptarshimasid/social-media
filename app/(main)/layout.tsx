@@ -3,6 +3,7 @@ import Navbar from "@/components/navbar";
 import Sidebar from "@/components/sidebar";
 import Suggestions from "@/components/suggestions";
 import BottomNavigation from "@/components/bottom-navigation";
+import ChatWindow from "@/components/chat-window";
 
 export default function MainLayout({
   children,
@@ -20,6 +21,7 @@ export default function MainLayout({
         <Suggestions />
       </div>
       <BottomNavigation />
+      <ChatWindow />
     </div>
   );
 }

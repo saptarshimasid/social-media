@@ -6,7 +6,7 @@ import UserAvatar from "@/components/user-avatar";
 import EmptyState from "@/components/empty-state";
 import LoadingSpinner from "@/components/loading-spinner";
 import { formatDistanceToNow } from "date-fns";
-import { Bell, Check, Heart, MessageSquare, UserPlus, Users, Sparkles, Tag } from "lucide-react";
+import { Bell, Check, Heart, MessageSquare, UserPlus, Users, Sparkles, Tag, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 export default function NotificationsPage() {
@@ -33,12 +33,17 @@ export default function NotificationsPage() {
     }
 
     // 2. Redirect to destination
-    if (notif.target_type === "tag") {
+    if (notif.target_type === "birthday") {
+      router.push(`/profile/${notif.sender.username}?comment=birthday`);
+    } else if (notif.target_type === "relationship") {
+      router.push(`/profile/${notif.sender.username}?activeTab=about`);
+    } else if (notif.target_type === "relationship_accept" || notif.target_type === "relationship_reject") {
+      router.push(`/profile/${notif.sender.username}`);
+    } else if (notif.target_type === "tag") {
       router.push(`/profile/${notif.sender.username}`);
     } else if (notif.type === "friend_request" || notif.type === "friend_accept") {
       router.push(`/profile/${notif.sender.username}`);
     } else if (notif.type === "reaction" || notif.type === "comment") {
-      // Redirect to home feed or target post/profile
       router.push(`/profile/${notif.sender.username}`);
     } else if (notif.type === "message") {
       router.push(`/messages`);
@@ -46,6 +51,30 @@ export default function NotificationsPage() {
   };
 
   const getNotificationDetails = (notif: DBNotification) => {
+    if (notif.target_type === "birthday") {
+      return {
+        text: "has a birthday today! Comment 'Happy Birthday' with an emoji 🎂🎈🎉",
+        icon: <Sparkles className="text-pink-500 animate-pulse" size={14} />,
+      };
+    }
+    if (notif.target_type === "relationship") {
+      return {
+        text: "wants to set relationship status to married/engaged with you. Click to review.",
+        icon: <Heart className="text-rose-500 fill-rose-500 animate-pulse" size={14} />,
+      };
+    }
+    if (notif.target_type === "relationship_accept") {
+      return {
+        text: "approved your relationship status update! 💍",
+        icon: <Heart className="text-rose-500 fill-rose-500" size={14} />,
+      };
+    }
+    if (notif.target_type === "relationship_reject") {
+      return {
+        text: "declined your relationship status update.",
+        icon: <X className="text-rose-500" size={14} />,
+      };
+    }
     if (notif.target_type === "tag") {
       return {
         text: "tagged you in a post.",

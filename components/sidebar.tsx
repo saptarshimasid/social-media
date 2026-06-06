@@ -7,10 +7,12 @@ import { Home, Film, MessageSquare, Users, Bell, Settings, User, UsersRound, Sto
 import { useAuth } from "./auth-provider";
 import UserAvatar from "./user-avatar";
 import { useNotifications } from "./notification-provider";
+import { useChat } from "./chat-provider";
 
 export default function Sidebar() {
   const { profile } = useAuth();
   const { unreadCount } = useNotifications();
+  const { isOpen, setIsOpen } = useChat();
   const pathname = usePathname();
 
   const navigation = [
@@ -51,8 +53,29 @@ export default function Sidebar() {
       {/* Navigation links */}
       <nav className="flex flex-col gap-1.5 flex-1">
         {navigation.map((item) => {
-          const isActive = pathname === item.href;
           const Icon = item.icon;
+
+          if (item.name === "Messages") {
+            const isActive = isOpen;
+            return (
+              <button
+                key={item.name}
+                onClick={() => setIsOpen(!isOpen)}
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl text-sm font-medium transition-all text-left cursor-pointer border border-transparent ${
+                  isActive
+                    ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20"
+                    : "text-foreground hover:bg-secondary hover:border-border/30"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Icon size={18} />
+                  <span>{item.name}</span>
+                </div>
+              </button>
+            );
+          }
+
+          const isActive = pathname === item.href;
 
           return (
             <Link

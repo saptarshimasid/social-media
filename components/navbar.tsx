@@ -6,12 +6,15 @@ import { useRouter } from "next/navigation";
 import { Search, Bell, MessageSquare, LogOut, User, Settings, Users, UsersRound, Store } from "lucide-react";
 import { useAuth } from "./auth-provider";
 import { useNotifications } from "./notification-provider";
+import { useChat } from "./chat-provider";
+import { createClient } from "@/lib/supabase";
 import UserAvatar from "./user-avatar";
 import ThemeToggle from "./theme-toggle";
 
 export default function Navbar() {
-  const { profile, signOut } = useAuth();
+  const { profile, signOut, refreshProfile } = useAuth();
   const { unreadCount, notifications, markAsRead, markAllAsRead } = useNotifications();
+  const { isOpen, setIsOpen } = useChat();
   const [searchQuery, setSearchQuery] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
@@ -83,13 +86,15 @@ export default function Navbar() {
           <ThemeToggle />
 
           {/* Messages */}
-          <Link
-            href="/messages"
-            className="p-2 rounded-xl text-foreground hover:bg-secondary border border-transparent hover:border-border/40 transition-all cursor-pointer relative"
+          <button
+            onClick={() => setIsOpen(!isOpen)}
+            className={`p-2 rounded-xl border border-transparent hover:border-border/40 transition-all cursor-pointer relative ${
+              isOpen ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20" : "text-foreground hover:bg-secondary"
+            }`}
             aria-label="Messages"
           >
             <MessageSquare size={20} />
-          </Link>
+          </button>
 
           {/* Notifications Dropdown */}
           <div className="relative">
@@ -204,6 +209,8 @@ export default function Navbar() {
                   src={profile.profile_picture_url}
                   name={profile.full_name}
                   size={36}
+                  showOnlineStatus
+                  onlineStatus={profile.online_status}
                 />
               </button>
 
@@ -221,6 +228,30 @@ export default function Navbar() {
                       <p className="text-xs text-muted truncate">
                         @{profile.username}
                       </p>
+                      
+                      {/* Status Selector */}
+                      <div className="mt-2 flex items-center justify-between border-t border-border/10 pt-2">
+                        <span className="text-[10px] text-muted font-bold">Status:</span>
+                        <select
+                          value={profile.online_status || "online"}
+                          onChange={async (e) => {
+                            const newStatus = e.target.value;
+                            const supabase = createClient();
+                            const { error } = await supabase
+                              .from("profiles")
+                              .update({ online_status: newStatus })
+                              .eq("id", profile.id);
+                            if (!error) {
+                              await refreshProfile();
+                            }
+                          }}
+                          className="text-[10px] bg-secondary border border-border/45 rounded-lg px-1.5 py-0.5 focus:outline-none cursor-pointer"
+                        >
+                          <option value="online">🟢 Online</option>
+                          <option value="busy">🔴 Busy</option>
+                          <option value="offline">⚫ Offline</option>
+                        </select>
+                      </div>
                     </div>
 
                     <Link
