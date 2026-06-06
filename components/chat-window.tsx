@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useAuth } from "./auth-provider";
 import { useChat } from "./chat-provider";
+import { useNotifications } from "./notification-provider";
 import { createClient } from "@/lib/supabase";
 import { convertToWebP } from "@/lib/image-utils";
 import UserAvatar from "./user-avatar";
@@ -22,6 +23,7 @@ interface DBMessage {
 export default function ChatWindow() {
   const { user } = useAuth();
   const { isOpen, setIsOpen, activePartner, setActivePartner, friends, friendsStatuses } = useChat();
+  const { chatNotifications, markChatAsRead } = useNotifications();
 
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<DBMessage[]>([]);
@@ -126,6 +128,11 @@ export default function ChatWindow() {
         if (msgError) throw msgError;
         setMessages((msgData as DBMessage[]) || []);
 
+        // Mark chat as read in DB and local state
+        if (activePartner) {
+          markChatAsRead(activePartner.id);
+        }
+
       } catch (err: any) {
         console.error("Failed to load chat thread:", err);
         if (err && typeof err === "object") {
@@ -142,7 +149,7 @@ export default function ChatWindow() {
     };
 
     initChat();
-  }, [activePartner, user, supabase]);
+  }, [activePartner, user, supabase, markChatAsRead]);
 
   // Real-time subscription to active conversation messages
   useEffect(() => {
@@ -176,6 +183,11 @@ export default function ChatWindow() {
           if (prev.some((m) => m.id === newMsg.id)) return prev;
           return [...prev, newMsg];
         });
+
+        // Mark message as read in real-time if thread is active
+        if (activePartner && newMsg.sender_id === activePartner.id) {
+          markChatAsRead(activePartner.id);
+        }
       }
     );
 
@@ -184,7 +196,7 @@ export default function ChatWindow() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [activeConversationId, supabase]);
+  }, [activeConversationId, supabase, activePartner, markChatAsRead]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -438,38 +450,48 @@ export default function ChatWindow() {
           {/* Friends list container */}
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
             {filteredFriends.length > 0 ? (
-              filteredFriends.map((friend) => (
-                <button
-                  key={friend.id}
-                  onClick={() => setActivePartner(friend)}
-                  className="w-full flex items-center gap-2.5 p-2 rounded-xl text-left hover:bg-secondary transition-colors cursor-pointer"
-                >
-                  <UserAvatar
-                    src={friend.profile_picture_url}
-                    name={friend.full_name}
-                    size={32}
-                    showOnlineStatus
-                    onlineStatus={friendsStatuses[friend.id]}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[11px] font-bold text-foreground truncate">
-                      {friend.full_name}
-                    </p>
-                    <p className="text-[9px] text-muted truncate">
-                      @{friend.username}
-                    </p>
-                  </div>
-                  <span
-                    className={`h-2 w-2 rounded-full shrink-0 ${
-                      friendsStatuses[friend.id] === "online"
-                        ? "bg-emerald-500 shadow-sm shadow-emerald-500/50"
-                        : friendsStatuses[friend.id] === "busy"
-                        ? "bg-rose-500 shadow-sm shadow-rose-500/50"
-                        : "bg-gray-400"
-                    }`}
-                  />
-                </button>
-              ))
+              filteredFriends.map((friend) => {
+                const friendUnreadCount = chatNotifications.filter((n) => n.sender_id === friend.id).length;
+                return (
+                  <button
+                    key={friend.id}
+                    onClick={() => setActivePartner(friend)}
+                    className="w-full flex items-center gap-2.5 p-2 rounded-xl text-left hover:bg-secondary transition-colors cursor-pointer"
+                  >
+                    <UserAvatar
+                      src={friend.profile_picture_url}
+                      name={friend.full_name}
+                      size={32}
+                      showOnlineStatus
+                      onlineStatus={friendsStatuses[friend.id]}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-1">
+                        <p className="text-[11px] font-bold text-foreground truncate">
+                          {friend.full_name}
+                        </p>
+                        {friendUnreadCount > 0 && (
+                          <span className="bg-rose-500 text-white rounded-full text-[8px] px-1.5 py-0.5 font-bold leading-none shrink-0 animate-pulse">
+                            {friendUnreadCount}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[9px] text-muted truncate">
+                        @{friend.username}
+                      </p>
+                    </div>
+                    <span
+                      className={`h-2 w-2 rounded-full shrink-0 ${
+                        friendsStatuses[friend.id] === "online"
+                          ? "bg-emerald-500 shadow-sm shadow-emerald-500/50"
+                          : friendsStatuses[friend.id] === "busy"
+                          ? "bg-rose-500 shadow-sm shadow-rose-500/50"
+                          : "bg-gray-400"
+                      }`}
+                    />
+                  </button>
+                );
+              })
             ) : (
               <div className="flex flex-col items-center justify-center text-muted p-8 text-center h-full">
                 <MessageSquare size={24} className="text-muted/40 mb-2" />

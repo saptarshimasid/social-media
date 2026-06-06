@@ -13,7 +13,7 @@ import ThemeToggle from "./theme-toggle";
 
 export default function Navbar() {
   const { profile, signOut, refreshProfile } = useAuth();
-  const { unreadCount, notifications, markAsRead, markAllAsRead } = useNotifications();
+  const { unreadCount, unreadChatCount, notifications, markAsRead, markAllAsRead } = useNotifications();
   const { isOpen, setIsOpen } = useChat();
   const [searchQuery, setSearchQuery] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
@@ -94,6 +94,11 @@ export default function Navbar() {
             aria-label="Messages"
           >
             <MessageSquare size={20} />
+            {unreadChatCount > 0 && (
+              <span className="absolute -top-1 -right-1 flex h-5 min-w-5 px-1 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white shadow-md leading-none">
+                {unreadChatCount > 99 ? "99+" : unreadChatCount}
+              </span>
+            )}
           </button>
 
           {/* Notifications Dropdown */}

@@ -1,0 +1,75 @@
+
+> social-connect@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.7 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.29.142:3000
+- Environments: .env.local
+✓ Ready in 306ms
+
+ GET / 200 in 4.0s (next.js: 2.8s, proxy.ts: 885ms, application-code: 344ms)
+TypeError: fetch failed
+    at async proxy (proxy.ts:38:7)
+  36 |   const {
+  37 |     data: { user },
+> 38 |   } = await supabase.auth.getUser();
+     |       ^
+  39 |
+  40 |   const isAuthPage = request.nextUrl.pathname.startsWith("/login");
+  41 |   const isOnboardingPage = request.nextUrl.pathname.startsWith("/onboarding"); {
+  [cause]: Error: read ECONNRESET
+      at ignore-listed frames {
+    errno: -54,
+    code: 'ECONNRESET',
+    syscall: 'read'
+  }
+}
+⨯ upstream image response timed out for https://crmlhrxktfgusbaieurv.supabase.co/storage/v1/object/public/profiles/0f2a7713-b4e3-4969-830a-5f9b74b610bb/avatar-1780725638637.png
+○ Compiling /friends ...
+TypeError: fetch failed
+    at async proxy (proxy.ts:38:7)
+  36 |   const {
+  37 |     data: { user },
+> 38 |   } = await supabase.auth.getUser();
+     |       ^
+  39 |
+  40 |   const isAuthPage = request.nextUrl.pathname.startsWith("/login");
+  41 |   const isOnboardingPage = request.nextUrl.pathname.startsWith("/onboarding"); {
+  [cause]: Error: read ECONNRESET
+      at ignore-listed frames {
+    errno: -54,
+    code: 'ECONNRESET',
+    syscall: 'read'
+  }
+}
+TypeError: fetch failed
+    at async proxy (proxy.ts:38:7)
+  36 |   const {
+  37 |     data: { user },
+> 38 |   } = await supabase.auth.getUser();
+     |       ^
+  39 |
+  40 |   const isAuthPage = request.nextUrl.pathname.startsWith("/login");
+  41 |   const isOnboardingPage = request.nextUrl.pathname.startsWith("/onboarding"); {
+  [cause]: Error: read ECONNRESET
+      at ignore-listed frames {
+    errno: -54,
+    code: 'ECONNRESET',
+    syscall: 'read'
+  }
+}
+○ Compiling /_not-found/page ...
+Error: "url" parameter is valid but upstream response timed out
+    at ignore-listed frames {
+  statusCode: 504
+}
+⨯ Error: Could not find the module "[project]/Desktop/social media/app/providers.tsx#Providers" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+    at stringify (<anonymous>)
+    at stringify (<anonymous>) {
+  digest: '3177089068'
+}
+⨯ Error: Could not find the module "[project]/Desktop/social media/node_modules/next/dist/client/components/builtin/global-error.js#default" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+    at stringify (<anonymous>) {
+  digest: '3795747528'
+}

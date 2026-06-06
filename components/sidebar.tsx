@@ -11,7 +11,7 @@ import { useChat } from "./chat-provider";
 
 export default function Sidebar() {
   const { profile } = useAuth();
-  const { unreadCount } = useNotifications();
+  const { unreadCount, unreadChatCount } = useNotifications();
   const { isOpen, setIsOpen } = useChat();
   const pathname = usePathname();
 
@@ -71,6 +71,13 @@ export default function Sidebar() {
                   <Icon size={18} />
                   <span>{item.name}</span>
                 </div>
+                {unreadChatCount > 0 && (
+                  <span className={`flex h-5 min-w-5 px-1 items-center justify-center rounded-full text-[10px] font-bold ring-2 ${
+                    isActive ? "bg-white text-primary ring-primary" : "bg-rose-500 text-white ring-background"
+                  }`}>
+                    {unreadChatCount}
+                  </span>
+                )}
               </button>
             );
           }

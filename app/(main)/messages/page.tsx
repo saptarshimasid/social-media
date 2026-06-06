@@ -2,6 +2,7 @@
 
 import React, { use, useEffect, useState, useRef, useCallback } from "react";
 import { useAuth } from "@/components/auth-provider";
+import { useNotifications } from "@/components/notification-provider";
 import { createClient } from "@/lib/supabase";
 import { convertToWebP } from "@/lib/image-utils";
 import UserAvatar from "@/components/user-avatar";
@@ -59,6 +60,7 @@ interface MessageReaction {
 export default function MessagesPage({ searchParams }: MessagesPageProps) {
   const { chat: targetUserId } = use(searchParams);
   const { user, profile } = useAuth();
+  const { chatNotifications, markChatAsRead } = useNotifications();
 
   const [conversations, setConversations] = useState<ChatParticipant[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
@@ -257,6 +259,11 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
           });
           setReactions(grouped);
         }
+
+        // Mark as read in DB and local state
+        if (activePartner) {
+          markChatAsRead(activePartner.id);
+        }
       } catch (err) {
         console.error("Error loading chat messages:", err);
       } finally {
@@ -365,7 +372,7 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [activeConversationId, supabase]);
+  }, [activeConversationId, supabase, activePartner, markChatAsRead]);
 
   const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -507,12 +514,14 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
           <div className="flex-1 overflow-y-auto p-2.5 space-y-1">
             {conversations.map((c) => {
               const isActive = activeConversationId === c.conversation_id;
+              const partnerUnreadCount = chatNotifications.filter((n) => n.sender_id === c.profiles.id).length;
               return (
                 <button
                   key={c.conversation_id}
                   onClick={() => {
                     setActiveConversationId(c.conversation_id);
                     setActivePartner(c.profiles);
+                    markChatAsRead(c.profiles.id);
                   }}
                   className={`w-full flex items-center gap-3 p-3 rounded-2xl text-left transition-colors cursor-pointer ${
                     isActive ? "bg-primary text-primary-foreground shadow-sm shadow-primary/15" : "hover:bg-secondary"
@@ -524,9 +533,16 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
                     size={38}
                   />
                   <div className="flex-1 min-w-0">
-                    <p className={`text-xs font-bold leading-normal truncate ${isActive ? "text-primary-foreground" : "text-foreground"}`}>
-                      {c.profiles.full_name}
-                    </p>
+                    <div className="flex items-center justify-between gap-1">
+                      <p className={`text-xs font-bold leading-normal truncate ${isActive ? "text-primary-foreground" : "text-foreground"}`}>
+                        {c.profiles.full_name}
+                      </p>
+                      {partnerUnreadCount > 0 && (
+                        <span className="bg-rose-500 text-white rounded-full text-[9px] px-2 py-0.5 font-bold leading-none shrink-0 animate-pulse">
+                          {partnerUnreadCount}
+                        </span>
+                      )}
+                    </div>
                     <p className={`text-[10px] truncate leading-none mt-1 ${isActive ? "text-primary-foreground/70" : "text-muted"}`}>
                       @{c.profiles.username}
                     </p>

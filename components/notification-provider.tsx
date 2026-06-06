@@ -23,9 +23,13 @@ export interface DBNotification {
 type NotificationContextType = {
   notifications: DBNotification[];
   unreadCount: number;
+  unreadChatCount: number;
+  chatNotifications: DBNotification[];
   fetchNotifications: () => Promise<void>;
+  fetchUnreadChatNotifications: () => Promise<void>;
   markAsRead: (id: string) => Promise<void>;
   markAllAsRead: () => Promise<void>;
+  markChatAsRead: (senderId: string) => Promise<void>;
   loading: boolean;
 };
 
@@ -35,29 +39,63 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const { user } = useAuth();
   const [notifications, setNotifications] = useState<DBNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
+  const [chatNotifications, setChatNotifications] = useState<DBNotification[]>([]);
   const [loading, setLoading] = useState(false);
   
   const supabase = createClient();
 
-  // 1. Fetch unread count
+  // 1. Fetch unread counts (normal and chat)
   const fetchUnreadCount = useCallback(async () => {
     if (!user) return;
     try {
-      const { count, error } = await supabase
+      const { count: normalCount, error: normalErr } = await supabase
         .from("notifications")
         .select("*", { count: "exact", head: true })
         .eq("user_id", user.id)
-        .eq("is_read", false);
+        .eq("is_read", false)
+        .neq("type", "message");
 
-      if (!error) {
-        setUnreadCount(count || 0);
+      if (!normalErr) {
+        setUnreadCount(normalCount || 0);
+      }
+
+      const { count: chatCount, error: chatErr } = await supabase
+        .from("notifications")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .eq("is_read", false)
+        .eq("type", "message");
+
+      if (!chatErr) {
+        setUnreadChatCount(chatCount || 0);
       }
     } catch (err) {
-      console.error("Failed to load unread count:", err);
+      console.error("Failed to load unread counts:", err);
     }
   }, [user, supabase]);
 
-  // 2. Fetch full list of notifications
+  // 1b. Fetch unread chat notifications list
+  const fetchUnreadChatNotifications = useCallback(async () => {
+    if (!user) return;
+    try {
+      const { data, error } = await supabase
+        .from("notifications")
+        .select("*, sender:profiles!notifications_sender_id_fkey(*)")
+        .eq("user_id", user.id)
+        .eq("type", "message")
+        .eq("is_read", false);
+
+      if (!error && data) {
+        setChatNotifications(data as unknown as DBNotification[]);
+        setUnreadChatCount(data.length);
+      }
+    } catch (err) {
+      console.error("Failed to fetch unread chat notifications:", err);
+    }
+  }, [user, supabase]);
+
+  // 2. Fetch full list of normal notifications (excluding chats)
   const fetchNotifications = useCallback(async () => {
     if (!user) return;
     setLoading(true);
@@ -66,17 +104,17 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         .from("notifications")
         .select("*, sender:profiles!notifications_sender_id_fkey(*)")
         .eq("user_id", user.id)
+        .neq("type", "message")
         .order("created_at", { ascending: false })
         .limit(40);
 
       if (error) throw error;
       setNotifications((data as unknown as DBNotification[]) || []);
       
-      // Sync unread count
       const unread = (data || []).filter((n) => !n.is_read).length;
       setUnreadCount(unread);
     } catch (err) {
-      console.error("Failed to load notifications list:", err);
+      console.error("Failed to load normal notifications list:", err);
     } finally {
       setLoading(false);
     }
@@ -101,7 +139,28 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     }
   };
 
-  // 4. Mark all notifications as read
+  // 3b. Mark chat notifications from a specific sender as read
+  const markChatAsRead = useCallback(async (senderId: string) => {
+    if (!user) return;
+    try {
+      const { error } = await supabase
+        .from("notifications")
+        .update({ is_read: true })
+        .eq("user_id", user.id)
+        .eq("sender_id", senderId)
+        .eq("type", "message")
+        .eq("is_read", false);
+
+      if (error) throw error;
+
+      setChatNotifications((prev) => prev.filter((n) => n.sender_id !== senderId));
+      fetchUnreadCount();
+    } catch (err) {
+      console.error("Failed to mark chat notifications as read:", err);
+    }
+  }, [user, supabase, fetchUnreadCount]);
+
+  // 4. Mark all normal notifications as read
   const markAllAsRead = async () => {
     if (!user) return;
     try {
@@ -109,6 +168,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         .from("notifications")
         .update({ is_read: true })
         .eq("user_id", user.id)
+        .neq("type", "message")
         .eq("is_read", false);
 
       if (error) throw error;
@@ -194,19 +254,23 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       const timer = setTimeout(() => {
         setNotifications([]);
         setUnreadCount(0);
+        setUnreadChatCount(0);
+        setChatNotifications([]);
       }, 0);
       return () => clearTimeout(timer);
     }
 
-    // Load initial count, list, and check birthdays immediately
+    // Load initial counts, lists, and check birthdays immediately
     fetchUnreadCount();
     fetchNotifications();
+    fetchUnreadChatNotifications();
     checkBirthdays();
 
     // Polling fallback every 8 seconds for reliability
     const pollInterval = setInterval(() => {
       fetchUnreadCount();
       fetchNotifications();
+      fetchUnreadChatNotifications();
     }, 8000);
 
     // Setup realtime channel subscription
@@ -232,9 +296,6 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
             created_at: string;
           };
 
-          // Immediately increment unread count
-          setUnreadCount((prev) => prev + 1);
-
           // Fetch sender profile to enrich the notification
           const { data: senderProfile } = await supabase
             .from("profiles")
@@ -258,7 +319,13 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
             },
           };
 
-          setNotifications((prev) => [newNotif, ...prev].slice(0, 40));
+          if (newRow.type === "message") {
+            setUnreadChatCount((prev) => prev + 1);
+            setChatNotifications((prev) => [newNotif, ...prev]);
+          } else {
+            setUnreadCount((prev) => prev + 1);
+            setNotifications((prev) => [newNotif, ...prev].slice(0, 40));
+          }
         }
       )
       .on(
@@ -281,6 +348,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
                 n.id === newRow.id ? { ...n, is_read: true } : n
               )
             );
+            setChatNotifications((prev) => prev.filter((n) => n.id !== newRow.id));
           }
           fetchUnreadCount();
         }
@@ -290,6 +358,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           // Re-fetch on reconnect to catch any missed notifications
           fetchUnreadCount();
           fetchNotifications();
+          fetchUnreadChatNotifications();
         }
       });
 
@@ -297,16 +366,20 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       clearInterval(pollInterval);
       supabase.removeChannel(channel);
     };
-  }, [user, supabase, fetchUnreadCount, fetchNotifications]);
+  }, [user, supabase, fetchUnreadCount, fetchNotifications, fetchUnreadChatNotifications, checkBirthdays]);
 
   return (
     <NotificationContext.Provider
       value={{
         notifications,
         unreadCount,
+        unreadChatCount,
+        chatNotifications,
         fetchNotifications,
+        fetchUnreadChatNotifications,
         markAsRead,
         markAllAsRead,
+        markChatAsRead,
         loading,
       }}
     >

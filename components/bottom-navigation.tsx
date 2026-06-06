@@ -8,7 +8,7 @@ import { useNotifications } from "./notification-provider";
 
 export default function BottomNavigation() {
   const pathname = usePathname();
-  const { unreadCount } = useNotifications();
+  const { unreadCount, unreadChatCount } = useNotifications();
 
   const navigation = [
     { name: "Home", href: "/", icon: Home },
@@ -41,6 +41,11 @@ export default function BottomNavigation() {
                 {item.name === "Alerts" && unreadCount > 0 && (
                   <span className="absolute -top-1 -right-2 flex h-4 min-w-4 px-0.5 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white leading-none">
                     {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+                {item.name === "Chat" && unreadChatCount > 0 && (
+                  <span className="absolute -top-1 -right-2 flex h-4 min-w-4 px-0.5 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white leading-none">
+                    {unreadChatCount > 99 ? "99+" : unreadChatCount}
                   </span>
                 )}
               </div>
