@@ -103,8 +103,8 @@ export default function Navbar() {
             >
               <Bell size={20} />
               {unreadCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 flex h-4.5 min-w-4.5 px-1 items-center justify-center rounded-full bg-rose-500 text-[9px] font-extrabold text-white ring-2 ring-background animate-pulse">
-                  {unreadCount}
+                <span className="absolute -top-1 -right-1 flex h-5 min-w-5 px-1 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white shadow-md leading-none">
+                  {unreadCount > 99 ? "99+" : unreadCount}
                 </span>
               )}
             </button>

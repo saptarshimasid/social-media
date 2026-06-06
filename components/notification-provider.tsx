@@ -130,19 +130,17 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       return () => clearTimeout(timer);
     }
 
-    // Load initial count and list
-    const fetchTimer = setTimeout(() => {
-      fetchUnreadCount();
-      fetchNotifications();
-    }, 0);
+    // Load initial count and list immediately
+    fetchUnreadCount();
+    fetchNotifications();
 
-    // Polling fallback every 15 seconds
+    // Polling fallback every 8 seconds for reliability
     const pollInterval = setInterval(() => {
       fetchUnreadCount();
       fetchNotifications();
-    }, 15000);
+    }, 8000);
 
-    // Setup channel subscription
+    // Setup realtime channel subscription
     const channel = supabase
       .channel(`user-notifications-${user.id}`)
       .on(
@@ -165,13 +163,13 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
             created_at: string;
           };
 
-          // Increment count
+          // Immediately increment unread count
           setUnreadCount((prev) => prev + 1);
-          
-          // Fetch sender info for the new notification row to append it cleanly
+
+          // Fetch sender profile to enrich the notification
           const { data: senderProfile } = await supabase
             .from("profiles")
-            .select("*")
+            .select("full_name, username, profile_picture_url")
             .eq("id", newRow.sender_id)
             .single();
 
@@ -208,7 +206,6 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
             is_read: boolean;
           };
 
-          // Sync read changes
           if (newRow.is_read) {
             setNotifications((prev) =>
               prev.map((n) =>
@@ -219,10 +216,15 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           fetchUnreadCount();
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          // Re-fetch on reconnect to catch any missed notifications
+          fetchUnreadCount();
+          fetchNotifications();
+        }
+      });
 
     return () => {
-      clearTimeout(fetchTimer);
       clearInterval(pollInterval);
       supabase.removeChannel(channel);
     };

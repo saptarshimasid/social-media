@@ -39,8 +39,8 @@ export default function BottomNavigation() {
               <div className="relative">
                 <Icon size={18} className={isActive ? "stroke-[2.5]" : "stroke-[2]"} />
                 {item.name === "Alerts" && unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1.5 flex h-3.5 min-w-3.5 px-0.5 items-center justify-center rounded-full bg-rose-500 text-[8px] font-bold text-white ring-1 ring-background animate-pulse">
-                    {unreadCount}
+                  <span className="absolute -top-1 -right-2 flex h-4 min-w-4 px-0.5 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white leading-none">
+                    {unreadCount > 99 ? "99+" : unreadCount}
                   </span>
                 )}
               </div>

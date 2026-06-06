@@ -5,6 +5,7 @@ import { Film, Image as ImageIcon, Sparkles, X, Globe, Tag, Search } from "lucid
 import { useAuth } from "./auth-provider";
 import { createClient } from "@/lib/supabase";
 import { convertToWebP } from "@/lib/image-utils";
+import { insertNotifications } from "@/lib/notification-utils";
 import UserAvatar from "./user-avatar";
 import MediaUploader from "./media-uploader";
 import LoadingSpinner from "./loading-spinner";
@@ -172,14 +173,15 @@ export default function CreatePostBox({ onPostCreated, groupId }: CreatePostBoxP
           await supabase.from("post_tags").insert(tagPayload);
 
           // Trigger notifications for tagged users
-          const notifPayload = taggedUsers.map((u) => ({
-            user_id: u.id,
-            sender_id: user.id,
-            type: "reaction", // using 'reaction' since 'tag' is not in the db enum
-            target_type: "tag", // used to distinguish tags in the frontend
-            target_id: postData.id,
-          }));
-          await supabase.from("notifications").insert(notifPayload);
+          await insertNotifications(
+            taggedUsers.map((u) => ({
+              user_id: u.id,
+              sender_id: user.id,
+              type: "reaction" as const, // using 'reaction' since 'tag' is not in the db enum
+              target_type: "tag",         // used to distinguish tags in the frontend
+              target_id: postData.id,
+            }))
+          );
         }
       }
 

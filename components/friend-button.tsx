@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { UserPlus, UserMinus, UserCheck, MessageSquare, Check, X } from "lucide-react";
 import { useAuth } from "./auth-provider";
 import { createClient } from "@/lib/supabase";
+import { insertNotification } from "@/lib/notification-utils";
 import Link from "next/link";
 
 type FriendStatus = "not_friends" | "request_sent" | "request_received" | "friends";
@@ -44,8 +45,8 @@ export default function FriendButton({
         });
         if (error) throw error;
         
-        // Also insert notification
-        await supabase.from("notifications").insert({
+        // Insert notification for recipient
+        await insertNotification({
           user_id: targetUserId,
           sender_id: user.id,
           type: "friend_request",
@@ -97,7 +98,7 @@ export default function FriendButton({
         // Yes, let's write 'friendships'!
 
         // Notify user of acceptance
-        await supabase.from("notifications").insert({
+        await insertNotification({
           user_id: targetUserId,
           sender_id: user.id,
           type: "friend_accept",

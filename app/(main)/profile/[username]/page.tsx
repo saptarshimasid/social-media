@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { convertToWebP } from "@/lib/image-utils";
+import { insertNotification } from "@/lib/notification-utils";
 import Link from "next/link";
 
 interface ProfilePageProps {
@@ -269,7 +270,8 @@ export default function ProfilePage({ params }: ProfilePageProps) {
         });
         if (error) throw error;
 
-        await supabase.from("notifications").insert({
+        // Notify recipient of request
+        await insertNotification({
           user_id: viewedProfile.id,
           sender_id: user.id,
           type: "friend_request",
@@ -310,7 +312,8 @@ export default function ProfilePage({ params }: ProfilePageProps) {
         setFriendStatus("friends");
         setFriendCount((prev) => prev + 1);
 
-        await supabase.from("notifications").insert({
+        // Notify user of acceptance
+        await insertNotification({
           user_id: viewedProfile.id,
           sender_id: user.id,
           type: "friend_accept",
