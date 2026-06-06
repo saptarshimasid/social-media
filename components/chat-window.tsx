@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase";
 import { convertToWebP } from "@/lib/image-utils";
 import UserAvatar from "./user-avatar";
 import LoadingSpinner from "./loading-spinner";
-import { Send, Image as ImageIcon, X, ArrowLeft, MessageSquare, Search, Sparkles } from "lucide-react";
+import { Send, Image as ImageIcon, X, ArrowLeft, MessageSquare, Search, Sparkles, Pencil, Trash2, Check, Mail } from "lucide-react";
 import { format } from "date-fns";
 
 interface DBMessage {
@@ -23,12 +23,14 @@ interface DBMessage {
 export default function ChatWindow() {
   const { user } = useAuth();
   const { isOpen, setIsOpen, activePartner, setActivePartner, friends, friendsStatuses } = useChat();
-  const { chatNotifications, markChatAsRead } = useNotifications();
+  const { chatNotifications, markChatAsRead, markChatAsUnread } = useNotifications();
 
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<DBMessage[]>([]);
   const [inputText, setInputText] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState("");
   
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -42,6 +44,35 @@ export default function ChatWindow() {
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const handleEditMessage = async (msgId: string) => {
+    if (!editingText.trim()) return;
+    try {
+      const { error } = await supabase
+        .from("messages")
+        .update({ content: editingText.trim() })
+        .eq("id", msgId);
+      
+      if (error) throw error;
+      setEditingMessageId(null);
+      setEditingText("");
+    } catch (err) {
+      console.error("Failed to edit message:", err);
+    }
+  };
+
+  const handleDeleteMessage = async (msgId: string) => {
+    try {
+      const { error } = await supabase
+        .from("messages")
+        .delete()
+        .eq("id", msgId);
+      
+      if (error) throw error;
+    } catch (err) {
+      console.error("Failed to delete message:", err);
+    }
   };
 
   useEffect(() => {
@@ -157,39 +188,68 @@ export default function ChatWindow() {
 
     let channel = supabase.channel(`floating-chat-${activeConversationId}`);
 
-    channel = channel.on(
-      "postgres_changes",
-      {
-        event: "INSERT",
-        schema: "public",
-        table: "messages",
-        filter: `conversation_id=eq.${activeConversationId}`,
-      },
-      (payload) => {
-        const newMsg = payload.new as DBMessage;
-        setMessages((prev) => {
-          // Check if there is an optimistic match to replace
-          const optimisticIndex = prev.findIndex(
-            (m) =>
-              m.id.startsWith("optimistic-") &&
-              (m.content === newMsg.content || (m.image_url && newMsg.image_url))
-          );
-          if (optimisticIndex > -1) {
-            const next = [...prev];
-            next[optimisticIndex] = newMsg;
-            return next;
-          }
-          // Avoid duplicates
-          if (prev.some((m) => m.id === newMsg.id)) return prev;
-          return [...prev, newMsg];
-        });
+    channel = channel
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `conversation_id=eq.${activeConversationId}`,
+        },
+        (payload) => {
+          const newMsg = payload.new as DBMessage;
+          setMessages((prev) => {
+            // Check if there is an optimistic match to replace
+            const optimisticIndex = prev.findIndex(
+              (m) =>
+                m.id.startsWith("optimistic-") &&
+                (m.content === newMsg.content || (m.image_url && newMsg.image_url))
+            );
+            if (optimisticIndex > -1) {
+              const next = [...prev];
+              next[optimisticIndex] = newMsg;
+              return next;
+            }
+            // Avoid duplicates
+            if (prev.some((m) => m.id === newMsg.id)) return prev;
+            return [...prev, newMsg];
+          });
 
-        // Mark message as read in real-time if thread is active
-        if (activePartner && newMsg.sender_id === activePartner.id) {
-          markChatAsRead(activePartner.id);
+          // Mark message as read in real-time if thread is active
+          if (activePartner && newMsg.sender_id === activePartner.id) {
+            markChatAsRead(activePartner.id);
+          }
         }
-      }
-    );
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "messages",
+          filter: `conversation_id=eq.${activeConversationId}`,
+        },
+        (payload) => {
+          const updatedMsg = payload.new as DBMessage;
+          setMessages((prev) =>
+            prev.map((m) => (m.id === updatedMsg.id ? { ...m, content: updatedMsg.content } : m))
+          );
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "messages",
+          filter: `conversation_id=eq.${activeConversationId}`,
+        },
+        (payload) => {
+          const deletedMsg = payload.old as { id: string };
+          setMessages((prev) => prev.filter((m) => m.id !== deletedMsg.id));
+        }
+      );
 
     channel.subscribe();
 
@@ -340,13 +400,40 @@ export default function ChatWindow() {
             ) : messages.length > 0 ? (
               messages.map((m) => {
                 const isMe = m.sender_id === user!.id;
+                const isEditing = editingMessageId === m.id;
                 return (
                   <div
                     key={m.id}
-                    className={`flex flex-col max-w-[80%] ${
+                    className={`flex flex-col max-w-[80%] relative group ${
                       isMe ? "ml-auto items-end" : "mr-auto items-start"
                     }`}
                   >
+                    {!isEditing && (
+                      <div className={`absolute top-0 -translate-y-1/2 hidden group-hover:flex items-center gap-1 bg-card border border-border shadow-md rounded-xl p-1 z-10 ${
+                        isMe ? "right-2" : "left-2"
+                      }`}>
+                        {isMe && (
+                          <button
+                            onClick={() => {
+                              setEditingMessageId(m.id);
+                              setEditingText(m.content || "");
+                            }}
+                            className="p-1 rounded hover:bg-secondary text-muted hover:text-foreground cursor-pointer"
+                            title="Edit"
+                          >
+                            <Pencil size={11} />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDeleteMessage(m.id)}
+                          className="p-1 rounded hover:bg-rose-500/20 text-muted hover:text-rose-500 cursor-pointer"
+                          title="Delete"
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      </div>
+                    )}
+
                     <div
                       className={`p-2.5 rounded-2xl border text-xs shadow-sm ${
                         isMe
@@ -360,7 +447,31 @@ export default function ChatWindow() {
                           <img src={m.image_url} alt="Chat attachment" className="w-full h-full object-cover" />
                         </div>
                       )}
-                      {m.content && <p className="leading-relaxed whitespace-pre-wrap">{m.content}</p>}
+                      {isEditing ? (
+                        <div className="flex items-center gap-1.5 min-w-[150px]">
+                          <input
+                            type="text"
+                            value={editingText}
+                            onChange={(e) => setEditingText(e.target.value)}
+                            className="flex-1 bg-background text-foreground border border-border rounded px-1.5 py-0.5 text-[11px] focus:outline-none focus:border-primary"
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => handleEditMessage(m.id)}
+                            className="p-1 text-emerald-500 hover:bg-emerald-500/10 rounded cursor-pointer"
+                          >
+                            <Check size={11} />
+                          </button>
+                          <button
+                            onClick={() => setEditingMessageId(null)}
+                            className="p-1 text-rose-500 hover:bg-rose-500/10 rounded cursor-pointer"
+                          >
+                            <X size={11} />
+                          </button>
+                        </div>
+                      ) : (
+                        m.content && <p className="leading-relaxed whitespace-pre-wrap">{m.content}</p>
+                      )}
                     </div>
                     <span className="text-[8px] text-muted/80 mt-1 leading-none">
                       {format(new Date(m.created_at), "h:mm a")}
@@ -480,15 +591,29 @@ export default function ChatWindow() {
                         @{friend.username}
                       </p>
                     </div>
-                    <span
-                      className={`h-2 w-2 rounded-full shrink-0 ${
-                        friendsStatuses[friend.id] === "online"
-                          ? "bg-emerald-500 shadow-sm shadow-emerald-500/50"
-                          : friendsStatuses[friend.id] === "busy"
-                          ? "bg-rose-500 shadow-sm shadow-rose-500/50"
-                          : "bg-gray-400"
-                      }`}
-                    />
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {friendUnreadCount === 0 && (
+                        <button
+                          title="Mark as Unread"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            markChatAsUnread(friend.id);
+                          }}
+                          className="p-1 rounded-lg hover:bg-secondary border border-transparent transition-colors text-muted hover:text-foreground cursor-pointer opacity-0 group-hover:opacity-100 shrink-0"
+                        >
+                          <Mail size={10} />
+                        </button>
+                      )}
+                      <span
+                        className={`h-2 w-2 rounded-full shrink-0 ${
+                          friendsStatuses[friend.id] === "online"
+                            ? "bg-emerald-500 shadow-sm shadow-emerald-500/50"
+                            : friendsStatuses[friend.id] === "busy"
+                            ? "bg-rose-500 shadow-sm shadow-rose-500/50"
+                            : "bg-gray-400"
+                        }`}
+                      />
+                    </div>
                   </button>
                 );
               })

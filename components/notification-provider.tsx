@@ -30,6 +30,7 @@ type NotificationContextType = {
   markAsRead: (id: string) => Promise<void>;
   markAllAsRead: () => Promise<void>;
   markChatAsRead: (senderId: string) => Promise<void>;
+  markChatAsUnread: (senderId: string, conversationId?: string) => Promise<void>;
   loading: boolean;
 };
 
@@ -159,6 +160,78 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       console.error("Failed to mark chat notifications as read:", err);
     }
   }, [user, supabase, fetchUnreadCount]);
+
+  // 3c. Mark chat notifications from a specific sender as unread
+  const markChatAsUnread = useCallback(async (senderId: string, conversationId?: string) => {
+    if (!user) return;
+    try {
+      let activeConvId = conversationId;
+
+      // If no conversation ID, try to query one
+      if (!activeConvId) {
+        const { data: userConvs } = await supabase
+          .from("conversation_participants")
+          .select("conversation_id")
+          .eq("user_id", user.id);
+
+        const convIds = (userConvs || []).map((c) => c.conversation_id);
+
+        if (convIds.length > 0) {
+          const { data: partnerConv } = await supabase
+            .from("conversation_participants")
+            .select("conversation_id")
+            .neq("user_id", user.id)
+            .eq("user_id", senderId)
+            .in("conversation_id", convIds)
+            .maybeSingle();
+
+          if (partnerConv) {
+            activeConvId = partnerConv.conversation_id;
+          }
+        }
+      }
+
+      const targetConvId = activeConvId || window.crypto.randomUUID();
+
+      // Find the latest message notification from this sender to see if we can update it
+      const { data: existing, error: findErr } = await supabase
+        .from("notifications")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("sender_id", senderId)
+        .eq("type", "message")
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (!findErr && existing && existing.length > 0) {
+        const { error: updateErr } = await supabase
+          .from("notifications")
+          .update({ is_read: false })
+          .eq("id", existing[0].id);
+
+        if (updateErr) throw updateErr;
+      } else {
+        // Otherwise, insert a new notification for ourselves
+        const { error: insertErr } = await supabase
+          .from("notifications")
+          .insert({
+            user_id: user.id,
+            sender_id: senderId,
+            type: "message",
+            target_type: "message",
+            target_id: targetConvId,
+            is_read: false,
+          });
+
+        if (insertErr) throw insertErr;
+      }
+
+      fetchUnreadCount();
+      fetchUnreadChatNotifications();
+    } catch (err) {
+      console.error("Failed to mark chat as unread:", err);
+    }
+  }, [user, supabase, fetchUnreadCount, fetchUnreadChatNotifications]);
 
   // 4. Mark all normal notifications as read
   const markAllAsRead = async () => {
@@ -380,6 +453,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         markAsRead,
         markAllAsRead,
         markChatAsRead,
+        markChatAsUnread,
         loading,
       }}
     >

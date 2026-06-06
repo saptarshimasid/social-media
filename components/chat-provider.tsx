@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { useAuth } from "./auth-provider";
 import { createClient } from "@/lib/supabase";
 
@@ -10,6 +10,7 @@ interface ChatPartner {
   username: string;
   profile_picture_url: string | null;
   online_status: string | null;
+  last_seen?: string | null;
 }
 
 type ChatContextType = {
@@ -33,6 +34,30 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [friendsStatuses, setFriendsStatuses] = useState<Record<string, string>>({});
   
   const supabase = createClient();
+  const accessTokenRef = useRef<string | null>(null);
+
+  // Sync session token for keepalive fetch
+  useEffect(() => {
+    if (!user) return;
+    
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        accessTokenRef.current = session.access_token;
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session) {
+        accessTokenRef.current = session.access_token;
+      } else {
+        accessTokenRef.current = null;
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [user, supabase]);
 
   // Load friends and their online status
   const fetchFriends = useCallback(async () => {
@@ -56,18 +81,30 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
       const { data: profiles, error } = await supabase
         .from("profiles")
-        .select("id, full_name, username, profile_picture_url, online_status")
+        .select("id, full_name, username, profile_picture_url, online_status, last_seen")
         .in("id", friendIds);
 
       if (!error && profiles) {
         const statuses: Record<string, string> = {};
-        const list: ChatPartner[] = profiles.map((p) => ({
-          id: p.id,
-          full_name: p.full_name,
-          username: p.username,
-          profile_picture_url: p.profile_picture_url,
-          online_status: p.online_status || "offline",
-        }));
+        const list: ChatPartner[] = profiles.map((p) => {
+          let status = p.online_status || "offline";
+          if (status === "online" && p.last_seen) {
+            const lastSeenDate = new Date(p.last_seen);
+            const now = new Date();
+            // If they haven't sent a heartbeat for more than 75 seconds, mark as offline
+            if (now.getTime() - lastSeenDate.getTime() > 75000) {
+              status = "offline";
+            }
+          }
+          return {
+            id: p.id,
+            full_name: p.full_name,
+            username: p.username,
+            profile_picture_url: p.profile_picture_url,
+            online_status: status,
+            last_seen: p.last_seen,
+          };
+        });
         
         list.forEach((p) => {
           statuses[p.id] = p.online_status || "offline";
@@ -109,7 +146,12 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           if (data.online_status !== "busy") {
             await supabase
               .from("profiles")
-              .update({ online_status: "online" })
+              .update({ online_status: "online", last_seen: new Date().toISOString() })
+              .eq("id", user.id);
+          } else {
+            await supabase
+              .from("profiles")
+              .update({ last_seen: new Date().toISOString() })
               .eq("id", user.id);
           }
         }
@@ -120,6 +162,14 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
     initializeOnlineStatus();
     fetchFriends();
+
+    // Heartbeat to update last_seen every 30 seconds
+    const heartbeatInterval = setInterval(async () => {
+      await supabase
+        .from("profiles")
+        .update({ last_seen: new Date().toISOString() })
+        .eq("id", user.id);
+    }, 30000);
 
     // Subscribe to status updates of friends in realtime
     const channel = supabase
@@ -134,23 +184,32 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         (payload) => {
           const updated = payload.new as any;
           if (updated && updated.id) {
+            let status = updated.online_status || "offline";
+            if (status === "online" && updated.last_seen) {
+              const lastSeenDate = new Date(updated.last_seen);
+              const now = new Date();
+              if (now.getTime() - lastSeenDate.getTime() > 75000) {
+                status = "offline";
+              }
+            }
+
             setFriendsStatuses((prev) => {
               if (prev[updated.id] !== undefined) {
-                return { ...prev, [updated.id]: updated.online_status || "offline" };
+                return { ...prev, [updated.id]: status };
               }
               return prev;
             });
             setFriends((prev) =>
               prev.map((f) =>
                 f.id === updated.id
-                  ? { ...f, online_status: updated.online_status || "offline" }
+                  ? { ...f, online_status: status, last_seen: updated.last_seen }
                   : f
               )
             );
             // Also update active partner if they are the one updated
             setActivePartner((prevActive) => {
               if (prevActive && prevActive.id === updated.id) {
-                return { ...prevActive, online_status: updated.online_status || "offline" };
+                return { ...prevActive, online_status: status };
               }
               return prevActive;
             });
@@ -161,13 +220,28 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
     // Set user to offline on tab close if desired
     const handleBeforeUnload = () => {
-      // Using sendBeacon or synchronous xmlhttprequest is tricky in modern browsers,
-      // so we rely on session / signout, but can do a quick async update as well.
-      supabase.from("profiles").update({ online_status: "offline" }).eq("id", user.id);
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const token = accessTokenRef.current;
+      if (supabaseUrl && supabaseKey && token) {
+        const url = `${supabaseUrl}/rest/v1/profiles?id=eq.${user.id}`;
+        fetch(url, {
+          method: "PATCH",
+          headers: {
+            "apikey": supabaseKey,
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json",
+            "Prefer": "return=minimal"
+          },
+          body: JSON.stringify({ online_status: "offline" }),
+          keepalive: true
+        });
+      }
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
 
     return () => {
+      clearInterval(heartbeatInterval);
       supabase.removeChannel(channel);
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };

@@ -8,7 +8,7 @@ import { convertToWebP } from "@/lib/image-utils";
 import UserAvatar from "@/components/user-avatar";
 import EmptyState from "@/components/empty-state";
 import LoadingSpinner from "@/components/loading-spinner";
-import { Send, Image as ImageIcon, Sparkles, MessageSquare, ArrowLeft, X } from "lucide-react";
+import { Send, Image as ImageIcon, Sparkles, MessageSquare, ArrowLeft, X, Pencil, Trash2, Check, Mail } from "lucide-react";
 import { format } from "date-fns";
 
 interface MessagesPageProps {
@@ -60,7 +60,7 @@ interface MessageReaction {
 export default function MessagesPage({ searchParams }: MessagesPageProps) {
   const { chat: targetUserId } = use(searchParams);
   const { user, profile } = useAuth();
-  const { chatNotifications, markChatAsRead } = useNotifications();
+  const { chatNotifications, markChatAsRead, markChatAsUnread } = useNotifications();
 
   const [conversations, setConversations] = useState<ChatParticipant[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
@@ -76,6 +76,8 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
   const [activeMsgHoverId, setActiveMsgHoverId] = useState<string | null>(null);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState("");
 
   const supabase = createClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -329,6 +331,39 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
           if (prev.some((m) => m.id === newMsg.id)) return prev;
           return [...prev, newMsg];
         });
+
+        // Mark as read in real-time if it's from our active chat partner
+        if (activePartner && newMsg.sender_id === activePartner.id) {
+          markChatAsRead(activePartner.id);
+        }
+      }
+    )
+    .on(
+      "postgres_changes",
+      {
+        event: "UPDATE",
+        schema: "public",
+        table: "messages",
+        filter: `conversation_id=eq.${activeConversationId}`,
+      },
+      (payload) => {
+        const updatedMsg = payload.new as DBMessage;
+        setMessages((prev) =>
+          prev.map((m) => (m.id === updatedMsg.id ? { ...m, content: updatedMsg.content } : m))
+        );
+      }
+    )
+    .on(
+      "postgres_changes",
+      {
+        event: "DELETE",
+        schema: "public",
+        table: "messages",
+        filter: `conversation_id=eq.${activeConversationId}`,
+      },
+      (payload) => {
+        const deletedMsg = payload.old as { id: string };
+        setMessages((prev) => prev.filter((m) => m.id !== deletedMsg.id));
       }
     );
 
@@ -494,6 +529,35 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
     }
   };
 
+  const handleEditMessage = async (msgId: string) => {
+    if (!editingText.trim()) return;
+    try {
+      const { error } = await supabase
+        .from("messages")
+        .update({ content: editingText.trim() })
+        .eq("id", msgId);
+      
+      if (error) throw error;
+      setEditingMessageId(null);
+      setEditingText("");
+    } catch (err) {
+      console.error("Failed to edit message:", err);
+    }
+  };
+
+  const handleDeleteMessage = async (msgId: string) => {
+    try {
+      const { error } = await supabase
+        .from("messages")
+        .delete()
+        .eq("id", msgId);
+      
+      if (error) throw error;
+    } catch (err) {
+      console.error("Failed to delete message:", err);
+    }
+  };
+
   return (
     <div className="bg-card border border-border/40 rounded-3xl overflow-hidden glass shadow-sm h-[calc(100vh-8rem)] flex animate-in fade-in duration-300">
       {/* 1. Left Conversation Sidebar List */}
@@ -523,7 +587,7 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
                     setActivePartner(c.profiles);
                     markChatAsRead(c.profiles.id);
                   }}
-                  className={`w-full flex items-center gap-3 p-3 rounded-2xl text-left transition-colors cursor-pointer ${
+                  className={`group w-full flex items-center gap-3 p-3 rounded-2xl text-left transition-colors cursor-pointer ${
                     isActive ? "bg-primary text-primary-foreground shadow-sm shadow-primary/15" : "hover:bg-secondary"
                   }`}
                 >
@@ -537,11 +601,26 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
                       <p className={`text-xs font-bold leading-normal truncate ${isActive ? "text-primary-foreground" : "text-foreground"}`}>
                         {c.profiles.full_name}
                       </p>
-                      {partnerUnreadCount > 0 && (
-                        <span className="bg-rose-500 text-white rounded-full text-[9px] px-2 py-0.5 font-bold leading-none shrink-0 animate-pulse">
-                          {partnerUnreadCount}
-                        </span>
-                      )}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {partnerUnreadCount > 0 ? (
+                          <span className="bg-rose-500 text-white rounded-full text-[9px] px-2 py-0.5 font-bold leading-none shrink-0 animate-pulse">
+                            {partnerUnreadCount}
+                          </span>
+                        ) : (
+                          <button
+                            title="Mark as Unread"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              markChatAsUnread(c.profiles.id, c.conversation_id);
+                            }}
+                            className={`p-1 rounded-lg hover:bg-secondary border border-transparent transition-colors text-muted hover:text-foreground cursor-pointer opacity-0 group-hover:opacity-100 shrink-0 ${
+                              isActive ? "hover:bg-primary-foreground/10 text-primary-foreground/60 hover:text-primary-foreground" : ""
+                            }`}
+                          >
+                            <Mail size={12} />
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <p className={`text-[10px] truncate leading-none mt-1 ${isActive ? "text-primary-foreground/70" : "text-muted"}`}>
                       @{c.profiles.username}
@@ -607,6 +686,7 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
               ) : messages.length > 0 ? (
                 messages.map((m) => {
                   const isMe = m.sender_id === user!.id;
+                  const isEditing = editingMessageId === m.id;
                   const msgRx = reactions[m.id] || [];
 
                   return (
@@ -649,7 +729,31 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
                             </div>
                           )}
 
-                          {m.content && <p className="leading-relaxed whitespace-pre-wrap">{m.content}</p>}
+                          {isEditing ? (
+                            <div className="flex items-center gap-1.5 min-w-[200px]">
+                              <input
+                                type="text"
+                                value={editingText}
+                                onChange={(e) => setEditingText(e.target.value)}
+                                className="flex-1 bg-background text-foreground border border-border rounded px-2 py-1 text-xs focus:outline-none focus:border-primary"
+                                autoFocus
+                              />
+                              <button
+                                onClick={() => handleEditMessage(m.id)}
+                                className="p-1 text-emerald-500 hover:bg-emerald-500/10 rounded cursor-pointer"
+                              >
+                                <Check size={12} />
+                              </button>
+                              <button
+                                onClick={() => setEditingMessageId(null)}
+                                className="p-1 text-rose-500 hover:bg-rose-500/10 rounded cursor-pointer"
+                              >
+                                <X size={12} />
+                              </button>
+                            </div>
+                          ) : (
+                            m.content && <p className="leading-relaxed whitespace-pre-wrap">{m.content}</p>
+                          )}
                           
                           <span
                             className={`block text-[9px] mt-1.5 leading-none ${
@@ -675,10 +779,10 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
                           </div>
                         )}
 
-                        {/* Hover emoji reactions overlay */}
-                        {activeMsgHoverId === m.id && (
+                        {/* Hover emoji reactions and message actions overlay */}
+                        {activeMsgHoverId === m.id && !isEditing && (
                           <div
-                            className={`absolute top-[-36px] bg-card border border-border rounded-full px-2 py-1 shadow-md flex gap-1 z-10 glass animate-in fade-in slide-in-from-bottom-1 duration-150 ${
+                            className={`absolute top-[-36px] bg-card border border-border rounded-full px-2.5 py-1 shadow-md flex items-center gap-1 z-10 glass animate-in fade-in slide-in-from-bottom-1 duration-150 ${
                               isMe ? "right-2" : "left-2"
                             }`}
                           >
@@ -688,11 +792,32 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
                                 onClick={() =>
                                   handleReactToMessage(m.id, emojiName as ReactionEmoji)
                                 }
-                                className="hover:scale-135 transition-transform text-md cursor-pointer select-none"
+                                className="hover:scale-135 transition-transform text-sm cursor-pointer select-none"
                               >
                                 {EMOJIS[emojiName as ReactionEmoji]}
                               </button>
                             ))}
+                            <div className="w-[1px] h-3.5 bg-border/80 mx-1 shrink-0" />
+                            {isMe && (
+                              <button
+                                onClick={() => {
+                                  setEditingMessageId(m.id);
+                                  setEditingText(m.content || "");
+                                  setActiveMsgHoverId(null);
+                                }}
+                                className="p-0.5 rounded text-muted hover:text-foreground cursor-pointer hover:bg-secondary shrink-0"
+                                title="Edit"
+                              >
+                                <Pencil size={11} />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleDeleteMessage(m.id)}
+                              className="p-0.5 rounded text-muted hover:text-rose-500 cursor-pointer hover:bg-rose-500/10 shrink-0"
+                              title="Delete"
+                            >
+                              <Trash2 size={11} />
+                            </button>
                           </div>
                         )}
                       </div>
