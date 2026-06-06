@@ -6,9 +6,11 @@ import { usePathname } from "next/navigation";
 import { Home, Film, MessageSquare, Users, Bell, Settings, User, UsersRound, Store } from "lucide-react";
 import { useAuth } from "./auth-provider";
 import UserAvatar from "./user-avatar";
+import { useNotifications } from "./notification-provider";
 
 export default function Sidebar() {
   const { profile } = useAuth();
+  const { unreadCount } = useNotifications();
   const pathname = usePathname();
 
   const navigation = [
@@ -56,14 +58,23 @@ export default function Sidebar() {
             <Link
               key={item.name}
               href={item.href}
-              className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-medium transition-all ${
+              className={`flex items-center justify-between px-4 py-3 rounded-2xl text-sm font-medium transition-all ${
                 isActive
                   ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20"
                   : "text-foreground hover:bg-secondary border border-transparent hover:border-border/30"
               }`}
             >
-              <Icon size={18} />
-              <span>{item.name}</span>
+              <div className="flex items-center gap-3">
+                <Icon size={18} />
+                <span>{item.name}</span>
+              </div>
+              {item.name === "Notifications" && unreadCount > 0 && (
+                <span className={`flex h-5 min-w-5 px-1 items-center justify-center rounded-full text-[10px] font-bold ring-2 ${
+                  isActive ? "bg-white text-primary ring-primary" : "bg-rose-500 text-white ring-background"
+                }`}>
+                  {unreadCount}
+                </span>
+              )}
             </Link>
           );
         })}

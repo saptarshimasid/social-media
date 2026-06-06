@@ -103,7 +103,7 @@ export default function Navbar() {
             >
               <Bell size={20} />
               {unreadCount > 0 && (
-                <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-bold text-white ring-2 ring-background animate-pulse">
+                <span className="absolute -top-0.5 -right-0.5 flex h-4.5 min-w-4.5 px-1 items-center justify-center rounded-full bg-rose-500 text-[9px] font-extrabold text-white ring-2 ring-background animate-pulse">
                   {unreadCount}
                 </span>
               )}
@@ -132,11 +132,15 @@ export default function Navbar() {
                     {notifications.length > 0 ? (
                       notifications.slice(0, 5).map((n) => {
                         let text = "interacted with you.";
-                        if (n.type === "friend_request") text = "sent you a friend request.";
-                        if (n.type === "friend_accept") text = "accepted your request.";
-                        if (n.type === "reaction") text = "reacted to your post.";
-                        if (n.type === "comment") text = "commented on your post.";
-                        if (n.type === "message") text = "messaged you.";
+                        if (n.target_type === "tag") {
+                          text = "tagged you in a post.";
+                        } else {
+                          if (n.type === "friend_request") text = "sent you a friend request.";
+                          if (n.type === "friend_accept") text = "accepted your request.";
+                          if (n.type === "reaction") text = "reacted to your post.";
+                          if (n.type === "comment") text = "commented on your post.";
+                          if (n.type === "message") text = "messaged you.";
+                        }
 
                         return (
                           <div

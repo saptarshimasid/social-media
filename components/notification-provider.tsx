@@ -133,7 +133,14 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     // Load initial count and list
     const fetchTimer = setTimeout(() => {
       fetchUnreadCount();
+      fetchNotifications();
     }, 0);
+
+    // Polling fallback every 15 seconds
+    const pollInterval = setInterval(() => {
+      fetchUnreadCount();
+      fetchNotifications();
+    }, 15000);
 
     // Setup channel subscription
     const channel = supabase
@@ -216,9 +223,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
     return () => {
       clearTimeout(fetchTimer);
+      clearInterval(pollInterval);
       supabase.removeChannel(channel);
     };
-  }, [user, supabase, fetchUnreadCount]);
+  }, [user, supabase, fetchUnreadCount, fetchNotifications]);
 
   return (
     <NotificationContext.Provider

@@ -6,7 +6,7 @@ import UserAvatar from "@/components/user-avatar";
 import EmptyState from "@/components/empty-state";
 import LoadingSpinner from "@/components/loading-spinner";
 import { formatDistanceToNow } from "date-fns";
-import { Bell, Check, Heart, MessageSquare, UserPlus, Users, Sparkles } from "lucide-react";
+import { Bell, Check, Heart, MessageSquare, UserPlus, Users, Sparkles, Tag } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 export default function NotificationsPage() {
@@ -33,7 +33,9 @@ export default function NotificationsPage() {
     }
 
     // 2. Redirect to destination
-    if (notif.type === "friend_request" || notif.type === "friend_accept") {
+    if (notif.target_type === "tag") {
+      router.push(`/profile/${notif.sender.username}`);
+    } else if (notif.type === "friend_request" || notif.type === "friend_accept") {
       router.push(`/profile/${notif.sender.username}`);
     } else if (notif.type === "reaction" || notif.type === "comment") {
       // Redirect to home feed or target post/profile
@@ -44,6 +46,13 @@ export default function NotificationsPage() {
   };
 
   const getNotificationDetails = (notif: DBNotification) => {
+    if (notif.target_type === "tag") {
+      return {
+        text: "tagged you in a post.",
+        icon: <Tag className="text-blue-500" size={14} />,
+      };
+    }
+
     switch (notif.type) {
       case "friend_request":
         return {

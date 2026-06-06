@@ -196,6 +196,16 @@ export default function ProfilePage({ params }: ProfilePageProps) {
           status: "pending",
         });
         if (error) throw error;
+
+        // Trigger notification
+        await supabase.from("notifications").insert({
+          user_id: viewedProfile.id,
+          sender_id: user.id,
+          type: "friend_request",
+          target_type: "friend_request",
+          target_id: user.id,
+        });
+
         setFriendStatus("request_sent");
       } 
       else if (action === "cancel_request" || action === "reject_request") {
@@ -230,6 +240,15 @@ export default function ProfilePage({ params }: ProfilePageProps) {
 
         setFriendStatus("friends");
         setFriendCount((prev) => prev + 1);
+
+        // Notify user of acceptance
+        await supabase.from("notifications").insert({
+          user_id: viewedProfile.id,
+          sender_id: user.id,
+          type: "friend_accept",
+          target_type: "friend_request",
+          target_id: user.id,
+        });
       } 
       else if (action === "remove_friend") {
         // Remove friendship

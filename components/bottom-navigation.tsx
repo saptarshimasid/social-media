@@ -4,9 +4,11 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Home, Film, MessageSquare, UsersRound, Store, Bell } from "lucide-react";
+import { useNotifications } from "./notification-provider";
 
 export default function BottomNavigation() {
   const pathname = usePathname();
+  const { unreadCount } = useNotifications();
 
   const navigation = [
     { name: "Home", href: "/", icon: Home },
@@ -34,7 +36,14 @@ export default function BottomNavigation() {
                   : "text-muted hover:text-foreground"
               }`}
             >
-              <Icon size={18} className={isActive ? "stroke-[2.5]" : "stroke-[2]"} />
+              <div className="relative">
+                <Icon size={18} className={isActive ? "stroke-[2.5]" : "stroke-[2]"} />
+                {item.name === "Alerts" && unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1.5 flex h-3.5 min-w-3.5 px-0.5 items-center justify-center rounded-full bg-rose-500 text-[8px] font-bold text-white ring-1 ring-background animate-pulse">
+                    {unreadCount}
+                  </span>
+                )}
+              </div>
               <span className="mt-0.5">{item.name}</span>
             </Link>
           );

@@ -165,6 +165,16 @@ export default function CreatePostBox({ onPostCreated, groupId }: CreatePostBoxP
             user_id: u.id,
           }));
           await supabase.from("post_tags").insert(tagPayload);
+
+          // Trigger notifications for tagged users
+          const notifPayload = taggedUsers.map((u) => ({
+            user_id: u.id,
+            sender_id: user.id,
+            type: "reaction", // using 'reaction' since 'tag' is not in the db enum
+            target_type: "tag", // used to distinguish tags in the frontend
+            target_id: postData.id,
+          }));
+          await supabase.from("notifications").insert(notifPayload);
         }
       }
 
