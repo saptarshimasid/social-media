@@ -318,8 +318,15 @@ CREATE POLICY "View own notifications" ON public.notifications
 CREATE POLICY "Mark own notifications as read" ON public.notifications
     FOR UPDATE TO authenticated USING (user_id = auth.uid());
 
-CREATE POLICY "Insert own notifications" ON public.notifications
-    FOR INSERT TO authenticated WITH CHECK (auth.uid() = sender_id);
+CREATE POLICY "Authenticated users can insert notifications" ON public.notifications
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        auth.uid() = sender_id     -- can only send as yourself
+        AND user_id != sender_id   -- cannot notify yourself
+    );
+
+-- Enable realtime for notifications
+ALTER TABLE public.notifications REPLICA IDENTITY FULL;
 
 -- CONVERSATIONS
 CREATE POLICY "View conversations involved in" ON public.conversations
