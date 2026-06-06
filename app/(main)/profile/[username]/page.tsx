@@ -1,32 +1,53 @@
 "use client";
 
-import React, { use, useEffect, useState } from "react";
+import React, { use, useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase";
 import { useAuth, Profile } from "@/components/auth-provider";
 import ProfileHeader from "@/components/profile-header";
-import { convertToWebP } from "@/lib/image-utils";
 import EmptyState from "@/components/empty-state";
 import LoadingSpinner from "@/components/loading-spinner";
-import { Flame, ImageIcon, Film, FileText, UserMinus } from "lucide-react";
+import PostCard, { Post } from "@/components/post-card";
+import UserAvatar from "@/components/user-avatar";
+import { useRouter } from "next/navigation";
+import {
+  Flame,
+  ImageIcon,
+  Film,
+  FileText,
+  UserMinus,
+  Users,
+  Info,
+  Calendar,
+  Mail,
+  Hash,
+  MessageSquare,
+} from "lucide-react";
+import { format } from "date-fns";
+import { convertToWebP } from "@/lib/image-utils";
+import Link from "next/link";
 
 interface ProfilePageProps {
   params: Promise<{ username: string }>;
 }
 
 type FriendStatus = "not_friends" | "request_sent" | "request_received" | "friends";
+type ActiveTab = "all" | "about" | "friends" | "photos" | "reels";
 
 export default function ProfilePage({ params }: ProfilePageProps) {
   const { username } = use(params);
   const { user } = useAuth();
-  
+  const router = useRouter();
+
   const [viewedProfile, setViewedProfile] = useState<Profile | null>(null);
   const [friendStatus, setFriendStatus] = useState<FriendStatus>("not_friends");
   const [friendCount, setFriendCount] = useState(0);
-  const [posts, setPosts] = useState<unknown[]>([]);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [friendsList, setFriendsList] = useState<Profile[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [loadingPosts, setLoadingPosts] = useState(false);
-  const [activeTab, setActiveTab] = useState<"posts" | "photos" | "reels">("posts");
+  const [loadingFriends, setLoadingFriends] = useState(false);
+  const [activeTab, setActiveTab] = useState<ActiveTab>("all");
 
   const supabase = createClient();
 
@@ -65,7 +86,6 @@ export default function ProfilePage({ params }: ProfilePageProps) {
 
         // Fetch relationship status if not own profile
         if (user && user.id !== profileData.id) {
-          // Check friendships
           const user_id1 = user.id < profileData.id ? user.id : profileData.id;
           const user_id2 = user.id > profileData.id ? user.id : profileData.id;
 
@@ -79,11 +99,12 @@ export default function ProfilePage({ params }: ProfilePageProps) {
           if (friendship) {
             setFriendStatus("friends");
           } else {
-            // Check sent requests
             const { data: req } = await supabase
               .from("friend_requests")
               .select("*")
-              .or(`and(sender_id.eq.${user.id},receiver_id.eq.${profileData.id}),and(sender_id.eq.${profileData.id},receiver_id.eq.${user.id})`)
+              .or(
+                `and(sender_id.eq.${user.id},receiver_id.eq.${profileData.id}),and(sender_id.eq.${profileData.id},receiver_id.eq.${user.id})`
+              )
               .maybeSingle();
 
             if (req) {
@@ -107,9 +128,10 @@ export default function ProfilePage({ params }: ProfilePageProps) {
     };
 
     fetchProfileData();
-  }, [username, user, supabase]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [username, user?.id]);
 
-  // 2. Fetch User Content (Posts)
+  // 2. Fetch Posts (for "All" tab)
   useEffect(() => {
     if (!viewedProfile) return;
 
@@ -132,7 +154,52 @@ export default function ProfilePage({ params }: ProfilePageProps) {
     };
 
     fetchUserPosts();
-  }, [viewedProfile, supabase]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewedProfile?.id]);
+
+  // 3. Fetch Friends list (lazy – only when Friends tab is active)
+  const fetchFriends = useCallback(async () => {
+    if (!viewedProfile) return;
+    setLoadingFriends(true);
+    try {
+      // Get all friendship rows for this user
+      const { data: friendships, error } = await supabase
+        .from("friendships")
+        .select("user_id1, user_id2")
+        .or(`user_id1.eq.${viewedProfile.id},user_id2.eq.${viewedProfile.id}`);
+
+      if (error) throw error;
+
+      // Collect the other user IDs
+      const friendIds = (friendships || []).map((f) =>
+        f.user_id1 === viewedProfile.id ? f.user_id2 : f.user_id1
+      );
+
+      if (friendIds.length === 0) {
+        setFriendsList([]);
+        return;
+      }
+
+      const { data: profiles, error: profilesErr } = await supabase
+        .from("profiles")
+        .select("*")
+        .in("id", friendIds);
+
+      if (profilesErr) throw profilesErr;
+      setFriendsList(profiles || []);
+    } catch (err) {
+      console.error("Error loading friends list:", err);
+    } finally {
+      setLoadingFriends(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewedProfile?.id]);
+
+  useEffect(() => {
+    if (activeTab === "friends" && friendsList.length === 0) {
+      fetchFriends();
+    }
+  }, [activeTab, fetchFriends, friendsList.length]);
 
   // Handle updates to profile cover or avatar
   const handleUpdatePictures = async (type: "avatar" | "cover", file: File) => {
@@ -143,19 +210,16 @@ export default function ProfilePage({ params }: ProfilePageProps) {
       const ext = converted.name.split(".").pop();
       const path = `${user.id}/${type}-${Date.now()}.${ext}`;
 
-      // Upload file to profiles bucket
       const { error: uploadErr } = await supabase.storage
         .from("profiles")
         .upload(path, converted, { upsert: true });
 
       if (uploadErr) throw uploadErr;
 
-      // Get public Url
-      const { data: { publicUrl } } = supabase.storage
-        .from("profiles")
-        .getPublicUrl(path);
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("profiles").getPublicUrl(path);
 
-      // Update Database
       const updatePayload =
         type === "avatar"
           ? { profile_picture_url: publicUrl }
@@ -168,7 +232,6 @@ export default function ProfilePage({ params }: ProfilePageProps) {
 
       if (dbErr) throw dbErr;
 
-      // Update local state
       setViewedProfile((prev) =>
         prev
           ? {
@@ -180,13 +243,20 @@ export default function ProfilePage({ params }: ProfilePageProps) {
           : null
       );
     } catch (err) {
-      alert(`Upload failed: ${err instanceof Error ? err.message : "Error uploading file"}`);
+      alert(
+        `Upload failed: ${err instanceof Error ? err.message : "Error uploading file"}`
+      );
     }
   };
 
-  // Handle Friend Actions (Add, Cancel, Accept, Reject, Unfriend)
+  // Handle Friend Actions
   const handleFriendAction = async (
-    action: "send_request" | "cancel_request" | "accept_request" | "reject_request" | "remove_friend"
+    action:
+      | "send_request"
+      | "cancel_request"
+      | "accept_request"
+      | "reject_request"
+      | "remove_friend"
   ) => {
     if (!user || !viewedProfile) return;
 
@@ -199,7 +269,6 @@ export default function ProfilePage({ params }: ProfilePageProps) {
         });
         if (error) throw error;
 
-        // Trigger notification
         await supabase.from("notifications").insert({
           user_id: viewedProfile.id,
           sender_id: user.id,
@@ -209,18 +278,17 @@ export default function ProfilePage({ params }: ProfilePageProps) {
         });
 
         setFriendStatus("request_sent");
-      } 
-      else if (action === "cancel_request" || action === "reject_request") {
+      } else if (action === "cancel_request" || action === "reject_request") {
         const { error } = await supabase
           .from("friend_requests")
           .delete()
-          .or(`and(sender_id.eq.${user.id},receiver_id.eq.${viewedProfile.id}),and(sender_id.eq.${viewedProfile.id},receiver_id.eq.${user.id})`);
-        
+          .or(
+            `and(sender_id.eq.${user.id},receiver_id.eq.${viewedProfile.id}),and(sender_id.eq.${viewedProfile.id},receiver_id.eq.${user.id})`
+          );
+
         if (error) throw error;
         setFriendStatus("not_friends");
-      } 
-      else if (action === "accept_request") {
-        // Accept request
+      } else if (action === "accept_request") {
         const { error: reqError } = await supabase
           .from("friend_requests")
           .update({ status: "accepted" })
@@ -229,7 +297,6 @@ export default function ProfilePage({ params }: ProfilePageProps) {
 
         if (reqError) throw reqError;
 
-        // Add friendship
         const u1 = user.id < viewedProfile.id ? user.id : viewedProfile.id;
         const u2 = user.id > viewedProfile.id ? user.id : viewedProfile.id;
 
@@ -243,7 +310,6 @@ export default function ProfilePage({ params }: ProfilePageProps) {
         setFriendStatus("friends");
         setFriendCount((prev) => prev + 1);
 
-        // Notify user of acceptance
         await supabase.from("notifications").insert({
           user_id: viewedProfile.id,
           sender_id: user.id,
@@ -251,9 +317,7 @@ export default function ProfilePage({ params }: ProfilePageProps) {
           target_type: "friend_request",
           target_id: user.id,
         });
-      } 
-      else if (action === "remove_friend") {
-        // Remove friendship
+      } else if (action === "remove_friend") {
         const u1 = user.id < viewedProfile.id ? user.id : viewedProfile.id;
         const u2 = user.id > viewedProfile.id ? user.id : viewedProfile.id;
 
@@ -265,11 +329,12 @@ export default function ProfilePage({ params }: ProfilePageProps) {
 
         if (deleteErr) throw deleteErr;
 
-        // Delete any leftover request
         await supabase
           .from("friend_requests")
           .delete()
-          .or(`and(sender_id.eq.${user.id},receiver_id.eq.${viewedProfile.id}),and(sender_id.eq.${viewedProfile.id},receiver_id.eq.${user.id})`);
+          .or(
+            `and(sender_id.eq.${user.id},receiver_id.eq.${viewedProfile.id}),and(sender_id.eq.${viewedProfile.id},receiver_id.eq.${user.id})`
+          );
 
         setFriendStatus("not_friends");
         setFriendCount((prev) => Math.max(0, prev - 1));
@@ -278,6 +343,13 @@ export default function ProfilePage({ params }: ProfilePageProps) {
       console.error("Failed to perform friend action:", err);
     }
   };
+
+  const photoPosts = posts.filter(
+    (p) => p.post_media && p.post_media.some((m: { media_type: string }) => m.media_type === "image")
+  );
+  const reelPosts = posts.filter(
+    (p) => p.post_media && p.post_media.some((m: { media_type: string }) => m.media_type === "video")
+  );
 
   if (loading) {
     return (
@@ -299,6 +371,14 @@ export default function ProfilePage({ params }: ProfilePageProps) {
     );
   }
 
+  const tabs: { id: ActiveTab; label: string; icon: React.ReactNode }[] = [
+    { id: "all", label: "All", icon: <FileText size={15} /> },
+    { id: "about", label: "About", icon: <Info size={15} /> },
+    { id: "friends", label: "Friends", icon: <Users size={15} /> },
+    { id: "photos", label: "Photos", icon: <ImageIcon size={15} /> },
+    { id: "reels", label: "Reels", icon: <Film size={15} /> },
+  ];
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Header Panel */}
@@ -311,91 +391,293 @@ export default function ProfilePage({ params }: ProfilePageProps) {
         onUpdatePictures={handleUpdatePictures}
       />
 
-      {/* Tabs Menu navigation */}
-      <div className="flex border-b border-border/40 pb-px mb-2 text-sm font-semibold">
-        <button
-          onClick={() => setActiveTab("posts")}
-          className={`flex items-center gap-2 px-4 py-3 transition-colors select-none cursor-pointer border-b-2 ${
-            activeTab === "posts"
-              ? "border-primary text-primary"
-              : "border-transparent text-muted hover:text-foreground"
-          }`}
-        >
-          <FileText size={16} />
-          Posts
-        </button>
-        <button
-          onClick={() => setActiveTab("photos")}
-          className={`flex items-center gap-2 px-4 py-3 transition-colors select-none cursor-pointer border-b-2 ${
-            activeTab === "photos"
-              ? "border-primary text-primary"
-              : "border-transparent text-muted hover:text-foreground"
-          }`}
-        >
-          <ImageIcon size={16} />
-          Photos
-        </button>
-        <button
-          onClick={() => setActiveTab("reels")}
-          className={`flex items-center gap-2 px-4 py-3 transition-colors select-none cursor-pointer border-b-2 ${
-            activeTab === "reels"
-              ? "border-primary text-primary"
-              : "border-transparent text-muted hover:text-foreground"
-          }`}
-        >
-          <Film size={16} />
-          Reels
-        </button>
+      {/* Tabs navigation */}
+      <div className="bg-card border border-border/40 rounded-2xl overflow-hidden glass shadow-sm">
+        <div className="flex overflow-x-auto scrollbar-hide border-b border-border/40">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-1.5 px-5 py-3.5 text-sm font-semibold whitespace-nowrap transition-all select-none cursor-pointer border-b-2 -mb-px ${
+                activeTab === tab.id
+                  ? "border-primary text-primary bg-primary/5"
+                  : "border-transparent text-muted hover:text-foreground hover:bg-secondary/50"
+              }`}
+            >
+              {tab.icon}
+              {tab.label}
+              {tab.id === "friends" && friendCount > 0 && (
+                <span
+                  className={`ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                    activeTab === "friends"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-secondary text-muted"
+                  }`}
+                >
+                  {friendCount}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* ===== ALL TAB ===== */}
+        {activeTab === "all" && (
+          <div className="p-4 space-y-4">
+            {loadingPosts ? (
+              <div className="flex justify-center py-8">
+                <LoadingSpinner size={24} />
+              </div>
+            ) : posts.length > 0 ? (
+              <div className="space-y-4 max-w-2xl mx-auto">
+                {posts.map((post) => (
+                  <PostCard key={post.id} post={post} />
+                ))}
+              </div>
+            ) : (
+              <div className="py-8">
+                <EmptyState
+                  icon={Flame}
+                  title="No Posts Yet"
+                  description={`${viewedProfile.full_name} hasn't shared any updates yet.`}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ===== ABOUT TAB ===== */}
+        {activeTab === "about" && (
+          <div className="p-6">
+            <div className="max-w-2xl mx-auto space-y-6">
+              {/* Bio */}
+              {viewedProfile.bio && (
+                <div className="space-y-2">
+                  <h3 className="text-xs font-bold text-muted uppercase tracking-widest">Bio</h3>
+                  <p className="text-sm text-foreground/90 leading-relaxed bg-secondary/30 rounded-2xl p-4 border border-border/30">
+                    {viewedProfile.bio}
+                  </p>
+                </div>
+              )}
+
+              {/* Info Fields */}
+              <div className="space-y-2">
+                <h3 className="text-xs font-bold text-muted uppercase tracking-widest">Details</h3>
+                <div className="bg-secondary/20 rounded-2xl border border-border/30 divide-y divide-border/20 overflow-hidden">
+                  {/* Username */}
+                  <div className="flex items-center gap-3 px-4 py-3">
+                    <div className="p-1.5 bg-primary/10 text-primary rounded-lg">
+                      <Hash size={14} />
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-muted font-medium">Username</p>
+                      <p className="text-sm text-foreground font-semibold">@{viewedProfile.username}</p>
+                    </div>
+                  </div>
+
+                  {/* Full Name */}
+                  <div className="flex items-center gap-3 px-4 py-3">
+                    <div className="p-1.5 bg-emerald-500/10 text-emerald-500 rounded-lg">
+                      <Users size={14} />
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-muted font-medium">Full Name</p>
+                      <p className="text-sm text-foreground font-semibold">{viewedProfile.full_name}</p>
+                    </div>
+                  </div>
+
+                  {/* Email — only for own profile */}
+                  {isOwnProfile && viewedProfile.email && (
+                    <div className="flex items-center gap-3 px-4 py-3">
+                      <div className="p-1.5 bg-blue-500/10 text-blue-500 rounded-lg">
+                        <Mail size={14} />
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-muted font-medium">Email</p>
+                        <p className="text-sm text-foreground font-semibold">
+                          {viewedProfile.email}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Member since */}
+                  {viewedProfile.created_at && (
+                    <div className="flex items-center gap-3 px-4 py-3">
+                      <div className="p-1.5 bg-amber-500/10 text-amber-500 rounded-lg">
+                        <Calendar size={14} />
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-muted font-medium">Member Since</p>
+                        <p className="text-sm text-foreground font-semibold">
+                          {format(new Date(viewedProfile.created_at), "MMMM yyyy")}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Stats row */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-secondary/30 rounded-2xl border border-border/30 p-4 text-center">
+                  <p className="text-xl font-bold text-foreground">{posts.length}</p>
+                  <p className="text-[10px] text-muted font-medium mt-1">Posts</p>
+                </div>
+                <div className="bg-secondary/30 rounded-2xl border border-border/30 p-4 text-center">
+                  <p className="text-xl font-bold text-foreground">{friendCount}</p>
+                  <p className="text-[10px] text-muted font-medium mt-1">Friends</p>
+                </div>
+                <div className="bg-secondary/30 rounded-2xl border border-border/30 p-4 text-center">
+                  <p className="text-xl font-bold text-foreground">{photoPosts.length}</p>
+                  <p className="text-[10px] text-muted font-medium mt-1">Photos</p>
+                </div>
+              </div>
+
+              {/* No Info fallback */}
+              {!viewedProfile.bio && !viewedProfile.created_at && (
+                <EmptyState
+                  icon={Info}
+                  title="No Info Available"
+                  description="This user hasn't added any information to their profile yet."
+                />
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ===== FRIENDS TAB ===== */}
+        {activeTab === "friends" && (
+          <div className="p-4">
+            {loadingFriends ? (
+              <div className="flex justify-center py-8">
+                <LoadingSpinner size={24} />
+              </div>
+            ) : friendsList.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {friendsList.map((friend) => (
+                  <Link
+                    key={friend.id}
+                    href={`/profile/${friend.username}`}
+                    className="flex items-center gap-3 p-3.5 bg-secondary/30 hover:bg-secondary/60 border border-border/30 rounded-2xl transition-all group"
+                  >
+                    <UserAvatar
+                      src={friend.profile_picture_url}
+                      name={friend.full_name}
+                      size={44}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-foreground truncate group-hover:text-primary transition-colors">
+                        {friend.full_name}
+                      </p>
+                      <p className="text-[11px] text-muted truncate">@{friend.username}</p>
+                    </div>
+                    {user && friend.id !== user.id && (
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          router.push(`/messages?chat=${friend.id}`);
+                        }}
+                        className="p-2 rounded-xl bg-primary/10 text-primary hover:bg-primary/20 transition-colors shrink-0"
+                        title="Message"
+                      >
+                        <MessageSquare size={14} />
+                      </button>
+                    )}
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <div className="py-8">
+                <EmptyState
+                  icon={Users}
+                  title="No Friends Yet"
+                  description={`${viewedProfile.full_name} hasn't connected with anyone yet.`}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ===== PHOTOS TAB ===== */}
+        {activeTab === "photos" && (
+          <div className="p-4">
+            {photoPosts.length > 0 ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {photoPosts.flatMap((p) =>
+                  (p.post_media || [])
+                    .filter((m: { media_type: string }) => m.media_type === "image")
+                    .map((m: { id: string; media_url: string }) => (
+                      <div
+                        key={m.id}
+                        className="aspect-square rounded-2xl overflow-hidden bg-secondary border border-border/20 hover:opacity-90 transition-opacity cursor-pointer"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={m.media_url}
+                          alt="Photo"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    ))
+                )}
+              </div>
+            ) : (
+              <div className="py-8">
+                <EmptyState
+                  icon={ImageIcon}
+                  title="No Photos"
+                  description="Uploaded images will appear here."
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ===== REELS TAB ===== */}
+        {activeTab === "reels" && (
+          <div className="p-4">
+            {reelPosts.length > 0 ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {reelPosts.flatMap((p) =>
+                  (p.post_media || [])
+                    .filter((m: { media_type: string }) => m.media_type === "video")
+                    .map((m: { id: string; media_url: string }) => (
+                      <div
+                        key={m.id}
+                        className="aspect-[9/16] rounded-2xl overflow-hidden bg-secondary border border-border/20 relative group cursor-pointer"
+                      >
+                        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                        <video
+                          src={m.media_url}
+                          className="w-full h-full object-cover"
+                          muted
+                          loop
+                          playsInline
+                          onMouseEnter={(e) => (e.currentTarget as HTMLVideoElement).play()}
+                          onMouseLeave={(e) => (e.currentTarget as HTMLVideoElement).pause()}
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="p-2 bg-black/50 rounded-full">
+                            <Film size={20} className="text-white" />
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                )}
+              </div>
+            ) : (
+              <div className="py-8">
+                <EmptyState
+                  icon={Film}
+                  title="No Reels"
+                  description="Uploaded short videos will appear here."
+                />
+              </div>
+            )}
+          </div>
+        )}
       </div>
-
-      {/* Tab Panels */}
-      {activeTab === "posts" && (
-        <div className="space-y-4 max-w-2xl mx-auto">
-          {loadingPosts ? (
-            <div className="flex justify-center py-8">
-              <LoadingSpinner size={24} />
-            </div>
-          ) : posts.length > 0 ? (
-            <div className="space-y-4">
-              {/* Post cards will go here in Phase 4 */}
-              <p className="text-center text-xs text-muted py-4">
-                Found {posts.length} posts. Full posts viewer will be enabled in Phase 4.
-              </p>
-            </div>
-          ) : (
-            <EmptyState
-              icon={Flame}
-              title="No Posts Yet"
-              description={`${viewedProfile.full_name} has not shared any updates yet.`}
-            />
-          )}
-        </div>
-      )}
-
-      {activeTab === "photos" && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {/* Extract media from posts in future, simple empty state for now */}
-          <div className="col-span-full py-6">
-            <EmptyState
-              icon={ImageIcon}
-              title="No Photos"
-              description="Uploaded images will appear here."
-            />
-          </div>
-        </div>
-      )}
-
-      {activeTab === "reels" && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-          <div className="col-span-full py-6">
-            <EmptyState
-              icon={Film}
-              title="No Reels"
-              description="Uploaded short videos will appear here."
-            />
-          </div>
-        </div>
-      )}
     </div>
   );
 }
