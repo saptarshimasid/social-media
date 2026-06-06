@@ -2,14 +2,14 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, Image as ImageIcon, Sparkles, User, FileText, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Camera, Image as ImageIcon, Sparkles, User, FileText, CheckCircle2, AlertTriangle, LogOut } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { createClient } from "@/lib/supabase";
 import ThemeToggle from "@/components/theme-toggle";
 import LoadingSpinner from "@/components/loading-spinner";
 
 export default function OnboardingPage() {
-  const { user, refreshProfile } = useAuth();
+  const { user, refreshProfile, signOut } = useAuth();
   const [fullName, setFullName] = useState("");
   const [username, setUsername] = useState("");
   const [bio, setBio] = useState("");
@@ -163,6 +163,19 @@ export default function OnboardingPage() {
 
   return (
     <div className="relative min-h-screen flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-500/10 via-background to-background">
+      <div className="absolute top-4 left-4">
+        <button
+          onClick={async () => {
+            await signOut();
+            router.push("/login");
+          }}
+          className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-secondary hover:bg-secondary/80 border border-border/40 text-[10px] font-bold text-rose-500 transition-all shadow-sm cursor-pointer"
+        >
+          <LogOut size={12} />
+          <span>Sign Out</span>
+        </button>
+      </div>
+      
       <div className="absolute top-4 right-4">
         <ThemeToggle />
       </div>
