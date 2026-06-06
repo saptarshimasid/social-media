@@ -318,6 +318,9 @@ CREATE POLICY "View own notifications" ON public.notifications
 CREATE POLICY "Mark own notifications as read" ON public.notifications
     FOR UPDATE TO authenticated USING (user_id = auth.uid());
 
+CREATE POLICY "Insert own notifications" ON public.notifications
+    FOR INSERT TO authenticated WITH CHECK (auth.uid() = sender_id);
+
 -- CONVERSATIONS
 CREATE POLICY "View conversations involved in" ON public.conversations
     FOR SELECT TO authenticated

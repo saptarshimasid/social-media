@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Plus, X, ChevronLeft, ChevronRight, Pause, Play, Volume2, VolumeX } from "lucide-react";
 import { useAuth } from "./auth-provider";
 import { createClient } from "@/lib/supabase";
+import { convertToWebP } from "@/lib/image-utils";
 import UserAvatar from "./user-avatar";
 import LoadingSpinner from "./loading-spinner";
 
@@ -124,13 +125,17 @@ export default function StoriesBar() {
     if (!file || !user) return;
     setUploading(true);
     try {
-      const ext = file.name.split(".").pop();
+      let fileToUpload = file;
+      if (file.type.startsWith("image/")) {
+        fileToUpload = await convertToWebP(file);
+      }
+      const ext = fileToUpload.name.split(".").pop();
       const path = `${user.id}/story-${Date.now()}.${ext}`;
-      const { error: uploadErr } = await supabase.storage.from("posts").upload(path, file);
+      const { error: uploadErr } = await supabase.storage.from("posts").upload(path, fileToUpload);
       if (uploadErr) throw uploadErr;
 
       const { data: urlData } = supabase.storage.from("posts").getPublicUrl(path);
-      const mediaType = file.type.startsWith("video") ? "video" : "image";
+      const mediaType = fileToUpload.type.startsWith("video") ? "video" : "image";
 
       const { error: insertErr } = await supabase.from("stories").insert({
         user_id: user.id,

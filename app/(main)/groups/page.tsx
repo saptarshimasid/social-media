@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus, Search, X, Users, Image as ImageIcon, Upload } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { createClient } from "@/lib/supabase";
+import { convertToWebP } from "@/lib/image-utils";
 import UserAvatar from "@/components/user-avatar";
 import LoadingSpinner from "@/components/loading-spinner";
 import EmptyState from "@/components/empty-state";
@@ -93,9 +94,10 @@ export default function GroupsPage() {
     try {
       let coverUrl: string | null = null;
       if (coverFile) {
-        const ext = coverFile.name.split(".").pop();
+        const converted = await convertToWebP(coverFile);
+        const ext = converted.name.split(".").pop();
         const path = `${user.id}/group-cover-${Date.now()}.${ext}`;
-        const { error: upErr } = await supabase.storage.from("posts").upload(path, coverFile);
+        const { error: upErr } = await supabase.storage.from("posts").upload(path, converted);
         if (upErr) throw upErr;
         const { data } = supabase.storage.from("posts").getPublicUrl(path);
         coverUrl = data.publicUrl;

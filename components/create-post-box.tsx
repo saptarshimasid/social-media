@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Film, Image as ImageIcon, Sparkles, X, Globe, Tag, Search } from "lucide-react";
 import { useAuth } from "./auth-provider";
 import { createClient } from "@/lib/supabase";
+import { convertToWebP } from "@/lib/image-utils";
 import UserAvatar from "./user-avatar";
 import MediaUploader from "./media-uploader";
 import LoadingSpinner from "./loading-spinner";
@@ -142,7 +143,11 @@ export default function CreatePostBox({ onPostCreated, groupId }: CreatePostBoxP
         // Upload and Link Media
         if (mediaFiles.length > 0) {
           const mediaInsertPromises = mediaFiles.map(async (media) => {
-            const mediaUrl = await uploadMediaFile(media.file);
+            let fileToUpload = media.file;
+            if (media.type === "image") {
+              fileToUpload = await convertToWebP(media.file);
+            }
+            const mediaUrl = await uploadMediaFile(fileToUpload);
             return {
               post_id: postData.id,
               media_url: mediaUrl,

@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { createClient } from "@/lib/supabase";
+import { convertToWebP } from "@/lib/image-utils";
 import UserAvatar from "@/components/user-avatar";
 import LoadingSpinner from "@/components/loading-spinner";
 import EmptyState from "@/components/empty-state";
@@ -95,9 +96,10 @@ export default function MarketplacePage() {
     setCreating(true);
 
     try {
-      const ext = imageFile.name.split(".").pop();
+      const converted = await convertToWebP(imageFile);
+      const ext = converted.name.split(".").pop();
       const path = `${user.id}/product-${Date.now()}.${ext}`;
-      const { error: upErr } = await supabase.storage.from("posts").upload(path, imageFile);
+      const { error: upErr } = await supabase.storage.from("posts").upload(path, converted);
       if (upErr) throw upErr;
 
       const { data: urlData } = supabase.storage.from("posts").getPublicUrl(path);

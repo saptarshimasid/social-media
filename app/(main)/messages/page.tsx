@@ -3,6 +3,7 @@
 import React, { use, useEffect, useState, useRef, useCallback } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { createClient } from "@/lib/supabase";
+import { convertToWebP } from "@/lib/image-utils";
 import UserAvatar from "@/components/user-avatar";
 import EmptyState from "@/components/empty-state";
 import LoadingSpinner from "@/components/loading-spinner";
@@ -364,12 +365,13 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
 
       // Upload image attachment if any
       if (imageFile) {
-        const ext = imageFile.name.split(".").pop();
+        const converted = await convertToWebP(imageFile);
+        const ext = converted.name.split(".").pop();
         const path = `${user!.id}/chat-${activeConversationId}-${Date.now()}.${ext}`;
 
         const { error: uploadErr } = await supabase.storage
           .from("posts") // using same bucket for messages attachments
-          .upload(path, imageFile);
+          .upload(path, converted);
 
         if (uploadErr) throw uploadErr;
 

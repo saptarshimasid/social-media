@@ -4,6 +4,7 @@ import React, { use, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase";
 import { useAuth, Profile } from "@/components/auth-provider";
 import ProfileHeader from "@/components/profile-header";
+import { convertToWebP } from "@/lib/image-utils";
 import EmptyState from "@/components/empty-state";
 import LoadingSpinner from "@/components/loading-spinner";
 import { Flame, ImageIcon, Film, FileText, UserMinus } from "lucide-react";
@@ -138,13 +139,14 @@ export default function ProfilePage({ params }: ProfilePageProps) {
     if (!user || !viewedProfile) return;
 
     try {
-      const ext = file.name.split(".").pop();
+      const converted = await convertToWebP(file);
+      const ext = converted.name.split(".").pop();
       const path = `${user.id}/${type}-${Date.now()}.${ext}`;
 
       // Upload file to profiles bucket
       const { error: uploadErr } = await supabase.storage
         .from("profiles")
-        .upload(path, file, { upsert: true });
+        .upload(path, converted, { upsert: true });
 
       if (uploadErr) throw uploadErr;
 

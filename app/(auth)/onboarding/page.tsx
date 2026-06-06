@@ -7,6 +7,7 @@ import { useAuth } from "@/components/auth-provider";
 import { createClient } from "@/lib/supabase";
 import ThemeToggle from "@/components/theme-toggle";
 import LoadingSpinner from "@/components/loading-spinner";
+import { convertToWebP } from "@/lib/image-utils";
 
 export default function OnboardingPage() {
   const { user, refreshProfile, signOut } = useAuth();
@@ -121,18 +122,20 @@ export default function OnboardingPage() {
       let profileUrl = null;
       let coverUrl = null;
 
-      // Upload profile image if selected
+       // Upload profile image if selected
       if (profileFile) {
-        const ext = profileFile.name.split(".").pop();
+        const converted = await convertToWebP(profileFile);
+        const ext = converted.name.split(".").pop();
         const path = `${user.id}/avatar-${Date.now()}.${ext}`;
-        profileUrl = await uploadFile(profileFile, "profiles", path);
+        profileUrl = await uploadFile(converted, "profiles", path);
       }
 
       // Upload cover image if selected
       if (coverFile) {
-        const ext = coverFile.name.split(".").pop();
+        const converted = await convertToWebP(coverFile);
+        const ext = converted.name.split(".").pop();
         const path = `${user.id}/cover-${Date.now()}.${ext}`;
-        coverUrl = await uploadFile(coverFile, "profiles", path);
+        coverUrl = await uploadFile(converted, "profiles", path);
       }
 
       // Save to database
