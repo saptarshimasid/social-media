@@ -3,22 +3,19 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Film, MessageSquare, Users, Bell, Settings, User, UsersRound, Store } from "lucide-react";
+import { Home, Film, Users, Bell, Settings, User, UsersRound, Store } from "lucide-react";
 import { useAuth } from "./auth-provider";
 import UserAvatar from "./user-avatar";
 import { useNotifications } from "./notification-provider";
-import { useChat } from "./chat-provider";
 
 export default function Sidebar() {
   const { profile } = useAuth();
-  const { unreadCount, unreadChatCount } = useNotifications();
-  const { isOpen, setIsOpen } = useChat();
+  const { unreadCount } = useNotifications();
   const pathname = usePathname();
 
   const navigation = [
     { name: "Home Feed", href: "/", icon: Home },
     { name: "Reels", href: "/reels", icon: Film },
-    { name: "Messages", href: "/messages", icon: MessageSquare },
     { name: "Find Friends", href: "/friends", icon: Users },
     { name: "Groups", href: "/groups", icon: UsersRound },
     { name: "Marketplace", href: "/marketplace", icon: Store },
@@ -54,34 +51,6 @@ export default function Sidebar() {
       <nav className="flex flex-col gap-1.5 flex-1">
         {navigation.map((item) => {
           const Icon = item.icon;
-
-          if (item.name === "Messages") {
-            const isActive = isOpen;
-            return (
-              <button
-                key={item.name}
-                onClick={() => setIsOpen(!isOpen)}
-                className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl text-sm font-medium transition-all text-left cursor-pointer border border-transparent ${
-                  isActive
-                    ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20"
-                    : "text-foreground hover:bg-secondary hover:border-border/30"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <Icon size={18} />
-                  <span>{item.name}</span>
-                </div>
-                {unreadChatCount > 0 && (
-                  <span className={`flex h-5 min-w-5 px-1 items-center justify-center rounded-full text-[10px] font-bold ring-2 ${
-                    isActive ? "bg-white text-primary ring-primary" : "bg-rose-500 text-white ring-background"
-                  }`}>
-                    {unreadChatCount}
-                  </span>
-                )}
-              </button>
-            );
-          }
-
           const isActive = pathname === item.href;
 
           return (
