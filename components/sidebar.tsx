@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Film, Users, Bell, Settings, User, UsersRound, Store } from "lucide-react";
+import { Home, Film, Users, Bell, Settings, User, UsersRound, Store, History } from "lucide-react";
 import { useAuth } from "./auth-provider";
 import UserAvatar from "./user-avatar";
 import { useNotifications } from "./notification-provider";
@@ -16,6 +16,7 @@ export default function Sidebar() {
   const navigation = [
     { name: "Home Feed", href: "/", icon: Home },
     { name: "Reels", href: "/reels", icon: Film },
+    { name: "Memories", href: "/memories", icon: History },
     { name: "Find Friends", href: "/friends", icon: Users },
     { name: "Groups", href: "/groups", icon: UsersRound },
     { name: "Marketplace", href: "/marketplace", icon: Store },
