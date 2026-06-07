@@ -121,8 +121,20 @@ export default function StoriesBar() {
   const fetchStories = useCallback(async () => {
     if (!user) return;
     try {
-      // Fetch stories from last 24 hours
+      // Calculate 24-hour cutoff
       const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+      // Clean up/delete expired stories (older than 24 hours) from the database
+      try {
+        await supabase
+          .from("stories")
+          .delete()
+          .lt("created_at", since);
+      } catch (cleanErr) {
+        console.warn("Expired stories cleanup error/warning:", cleanErr);
+      }
+
+      // Fetch stories from last 24 hours
       const { data: storiesData, error: storiesError } = await supabase
         .from("stories")
         .select("*")
