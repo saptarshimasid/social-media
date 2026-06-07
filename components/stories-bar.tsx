@@ -32,21 +32,49 @@ const CURATED_SONGS = [
     title: "Chill Lo-Fi Beat",
     artist: "Lofi Dreamer",
     url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+    genre: "Lofi",
   },
   {
     title: "Acoustic Sunset",
     artist: "Guitar Nomad",
     url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+    genre: "Acoustic",
+  },
+  {
+    title: "Epic Cinematic",
+    artist: "Orchestral Vibes",
+    url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
+    genre: "Cinematic",
   },
   {
     title: "Synthwave Horizon",
     artist: "Neon Rider",
     url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3",
+    genre: "Synthwave",
+  },
+  {
+    title: "Summer Breeze",
+    artist: "Beach Party",
+    url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3",
+    genre: "Dance",
+  },
+  {
+    title: "Urban Funk",
+    artist: "Groove Station",
+    url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3",
+    genre: "Funk",
+  },
+  {
+    title: "Ambient Relaxation",
+    artist: "Zen Mind",
+    url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-7.mp3",
+    genre: "Ambient",
   },
   {
     title: "Happy Ukulele",
     artist: "Sunny Days",
     url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3",
+    genre: "Happy",
   },
 ];
 
@@ -69,6 +97,20 @@ export default function StoriesBar() {
   // Song selection modal state
   const [pendingStoryFile, setPendingStoryFile] = useState<File | null>(null);
   const [selectedMusicIdx, setSelectedMusicIdx] = useState<number | null>(null);
+
+  // New Background music preview/selection states
+  const [musicTab, setMusicTab] = useState<"library" | "custom">("library");
+  const [musicSearch, setMusicSearch] = useState("");
+  const [musicGenre, setMusicGenre] = useState<string>("All");
+
+  const [previewingUrl, setPreviewingUrl] = useState<string | null>(null);
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  const [customTitle, setCustomTitle] = useState("");
+  const [customArtist, setCustomArtist] = useState("");
+  const [customUrl, setCustomUrl] = useState("");
+  const [customFile, setCustomFile] = useState<File | null>(null);
+  const customAudioInputRef = useRef<HTMLInputElement>(null);
 
   const currentGroup = activeGroup !== null ? storyGroups[activeGroup] : null;
   const currentStory = currentGroup?.stories[activeStoryIdx] || null;
@@ -162,10 +204,64 @@ export default function StoriesBar() {
     }
   };
 
+  const togglePreview = (url: string) => {
+    if (!previewAudioRef.current) return;
+    
+    if (previewingUrl === url) {
+      previewAudioRef.current.pause();
+      setPreviewingUrl(null);
+    } else {
+      setPreviewingUrl(url);
+      previewAudioRef.current.src = url;
+      previewAudioRef.current.load();
+      previewAudioRef.current.play().catch((err) => {
+        console.warn("Preview playback failed:", err);
+      });
+    }
+  };
+
+  const stopPreview = useCallback(() => {
+    if (previewAudioRef.current) {
+      previewAudioRef.current.pause();
+      previewAudioRef.current.src = "";
+    }
+    setPreviewingUrl(null);
+  }, []);
+
+  const handleCancelStory = () => {
+    stopPreview();
+    setPendingStoryFile(null);
+    setSelectedMusicIdx(null);
+    setCustomTitle("");
+    setCustomArtist("");
+    setCustomUrl("");
+    setCustomFile(null);
+    setMusicTab("library");
+    setMusicSearch("");
+    setMusicGenre("All");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (customAudioInputRef.current) customAudioInputRef.current.value = "";
+  };
+
+  const uploadCustomAudio = async (file: File) => {
+    if (!user) return "";
+    const ext = file.name.split(".").pop();
+    const path = `${user.id}/audio-${Date.now()}.${ext}`;
+    const { error } = await supabase.storage.from("posts").upload(path, file);
+    if (error) {
+      console.warn("Storage audio upload error:", error.message);
+      throw new Error("Failed to upload custom audio file.");
+    }
+    const { data } = supabase.storage.from("posts").getPublicUrl(path);
+    return data.publicUrl;
+  };
+
   const submitStory = async () => {
     if (!pendingStoryFile || !user) return;
     setUploading(true);
+    stopPreview();
     try {
+      // 1. Upload story image/video
       let fileToUpload = pendingStoryFile;
       if (pendingStoryFile.type.startsWith("image/")) {
         fileToUpload = await convertToWebP(pendingStoryFile);
@@ -178,25 +274,59 @@ export default function StoriesBar() {
       const { data: urlData } = supabase.storage.from("posts").getPublicUrl(path);
       const mediaType = fileToUpload.type.startsWith("video") ? "video" : "image";
 
-      const music = selectedMusicIdx !== null ? CURATED_SONGS[selectedMusicIdx] : null;
+      // 2. Resolve music details
+      let finalMusicUrl = "";
+      let finalMusicTitle = "";
+      let finalMusicArtist = "";
 
+      if (musicTab === "custom") {
+        if (!customTitle.trim()) {
+          throw new Error("Custom song title is required.");
+        }
+        finalMusicTitle = customTitle.trim();
+        finalMusicArtist = customArtist.trim() || "Unknown Artist";
+
+        if (customFile) {
+          finalMusicUrl = await uploadCustomAudio(customFile);
+        } else if (customUrl.trim()) {
+          finalMusicUrl = customUrl.trim();
+        }
+      } else if (selectedMusicIdx !== null) {
+        const song = CURATED_SONGS[selectedMusicIdx];
+        finalMusicTitle = song.title;
+        finalMusicArtist = song.artist;
+        finalMusicUrl = song.url;
+      }
+
+      // 3. Insert story record
       const { error: insertErr } = await supabase.from("stories").insert({
         user_id: user.id,
         media_url: urlData.publicUrl,
         media_type: mediaType,
-        music_title: music?.title || null,
-        music_artist: music?.artist || null,
-        music_url: music?.url || null,
+        music_title: finalMusicTitle || null,
+        music_artist: finalMusicArtist || null,
+        music_url: finalMusicUrl || null,
       });
       if (insertErr) throw insertErr;
 
+      // Reset states
       setPendingStoryFile(null);
+      setSelectedMusicIdx(null);
+      setCustomTitle("");
+      setCustomArtist("");
+      setCustomUrl("");
+      setCustomFile(null);
+      setMusicTab("library");
+      setMusicSearch("");
+      setMusicGenre("All");
       await fetchStories();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to upload story:", err);
+      alert(err.message || "Failed to share story. Please try again.");
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
+      if (customAudioInputRef.current) customAudioInputRef.current.value = "";
     }
   };
 
@@ -366,55 +496,265 @@ export default function StoriesBar() {
       {/* Choose Background Music Dialog Overlay */}
       {pendingStoryFile && (
         <div className="fixed inset-0 z-[120] bg-black/80 flex items-center justify-center p-4 backdrop-blur-md">
-          <div className="bg-card border border-border/40 rounded-3xl p-6 shadow-2xl max-w-sm w-full glass space-y-4">
+          {/* Local Audio Elements for Previews */}
+          <audio ref={previewAudioRef} onEnded={() => setPreviewingUrl(null)} />
+          
+          <div className="bg-card border border-border/30 rounded-3xl p-6 shadow-2xl max-w-md w-full glass space-y-4">
             <h3 className="font-bold text-base text-foreground flex items-center gap-2">
               <Music size={18} className="text-primary" /> Add Background Music
             </h3>
             <p className="text-xs text-muted leading-relaxed">Select a background soundtrack to play in the background of your story.</p>
             
-            {/* Curated Music Track List */}
-            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+            {/* Tabs */}
+            <div className="flex border-b border-border/40 gap-4">
               <button
-                onClick={() => setSelectedMusicIdx(null)}
-                className={`w-full text-left p-3 rounded-2xl text-xs font-semibold flex items-center justify-between border cursor-pointer transition-colors ${
-                  selectedMusicIdx === null
-                    ? "border-primary bg-primary/5 text-primary"
-                    : "border-border/40 hover:bg-secondary text-foreground"
+                type="button"
+                onClick={() => {
+                  setMusicTab("library");
+                  stopPreview();
+                }}
+                className={`flex-1 pb-2 text-xs font-bold text-center border-b-2 transition-all ${
+                  musicTab === "library"
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted hover:text-foreground"
                 }`}
               >
-                <span>No Background Music</span>
-                {selectedMusicIdx === null && <Check size={14} />}
+                Curated Library
               </button>
-
-              {CURATED_SONGS.map((song, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => setSelectedMusicIdx(idx)}
-                  className={`w-full text-left p-3 rounded-2xl text-xs font-semibold flex items-center justify-between border cursor-pointer transition-colors ${
-                    selectedMusicIdx === idx
-                      ? "border-primary bg-primary/5 text-primary"
-                      : "border-border/40 hover:bg-secondary text-foreground"
-                  }`}
-                >
-                  <div className="flex flex-col">
-                    <span>{song.title}</span>
-                    <span className="text-[10px] text-muted font-normal mt-0.5">{song.artist}</span>
-                  </div>
-                  {selectedMusicIdx === idx && <Check size={14} />}
-                </button>
-              ))}
+              <button
+                type="button"
+                onClick={() => {
+                  setMusicTab("custom");
+                  stopPreview();
+                }}
+                className={`flex-1 pb-2 text-xs font-bold text-center border-b-2 transition-all ${
+                  musicTab === "custom"
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted hover:text-foreground"
+                }`}
+              >
+                Custom Soundtrack
+              </button>
             </div>
+
+            {/* Content area based on tab */}
+            {musicTab === "library" ? (
+              <div className="space-y-3.5">
+                {/* Search Bar & Genre Filters */}
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    placeholder="Search tracks or artists..."
+                    value={musicSearch}
+                    onChange={(e) => setMusicSearch(e.target.value)}
+                    className="w-full bg-secondary/60 border border-border/25 rounded-2xl px-3.5 py-2 text-xs text-foreground placeholder-muted focus:outline-none focus:border-primary/30"
+                  />
+                  
+                  {/* Genre Chips */}
+                  <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+                    {["All", "Lofi", "Acoustic", "Cinematic", "Synthwave", "Dance", "Ambient", "Funk", "Happy"].map((g) => (
+                      <button
+                        key={g}
+                        type="button"
+                        onClick={() => setMusicGenre(g)}
+                        className={`px-3 py-1 rounded-full text-[10px] font-bold border transition-colors ${
+                          musicGenre === g
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "border-border/30 bg-secondary/50 text-muted hover:bg-secondary"
+                        }`}
+                      >
+                        {g}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Music List */}
+                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                  <button
+                    onClick={() => {
+                      setSelectedMusicIdx(null);
+                      stopPreview();
+                    }}
+                    className={`w-full text-left p-3 rounded-2xl text-xs font-semibold flex items-center justify-between border cursor-pointer transition-colors ${
+                      selectedMusicIdx === null
+                        ? "border-primary bg-primary/5 text-primary"
+                        : "border-border/40 hover:bg-secondary text-foreground"
+                    }`}
+                  >
+                    <span>No Background Music</span>
+                    {selectedMusicIdx === null && <Check size={14} />}
+                  </button>
+
+                  {CURATED_SONGS.filter((song) => {
+                    const matchesSearch =
+                      song.title.toLowerCase().includes(musicSearch.toLowerCase()) ||
+                      song.artist.toLowerCase().includes(musicSearch.toLowerCase());
+                    const matchesGenre = musicGenre === "All" || song.genre === musicGenre;
+                    return matchesSearch && matchesGenre;
+                  }).map((song) => {
+                    const idx = CURATED_SONGS.findIndex((s) => s.url === song.url);
+                    const isSelected = selectedMusicIdx === idx;
+                    const isPreviewing = previewingUrl === song.url;
+                    
+                    return (
+                      <div
+                        key={idx}
+                        className={`flex items-center gap-2 p-2 rounded-2xl border transition-all ${
+                          isSelected
+                            ? "border-primary bg-primary/5"
+                            : "border-border/30 hover:border-border/60"
+                        }`}
+                      >
+                        {/* Play/Pause Button */}
+                        <button
+                          type="button"
+                          onClick={() => togglePreview(song.url)}
+                          className="w-8 h-8 rounded-full bg-secondary/80 flex items-center justify-center text-foreground hover:bg-secondary hover:text-primary transition-colors shrink-0"
+                        >
+                          {isPreviewing ? <Pause size={14} /> : <Play size={14} className="ml-0.5" />}
+                        </button>
+
+                        {/* Title & Artist */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedMusicIdx(idx);
+                          }}
+                          className="flex-1 text-left min-w-0"
+                        >
+                          <p className={`text-xs font-bold truncate ${isSelected ? "text-primary" : "text-foreground"}`}>
+                            {song.title}
+                          </p>
+                          <p className="text-[10px] text-muted truncate mt-0.5">{song.artist}</p>
+                        </button>
+
+                        {/* Visualizer / Genre Badge */}
+                        <div className="flex items-center gap-2 pr-1 shrink-0">
+                          {isPreviewing && (
+                            <div className="flex items-end gap-[3px] h-3.5 px-1 shrink-0">
+                              <span className="w-[2.5px] h-2 bg-primary rounded-full animate-pulse" />
+                              <span className="w-[2.5px] h-3.5 bg-primary rounded-full animate-pulse" style={{ animationDelay: "0.2s" }} />
+                              <span className="w-[2.5px] h-3 bg-primary rounded-full animate-pulse" style={{ animationDelay: "0.4s" }} />
+                            </div>
+                          )}
+                          <span className="px-2 py-0.5 rounded bg-secondary text-muted text-[9px] font-bold">
+                            {song.genre}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {/* Custom Tab Fields */}
+                <div className="space-y-2.5">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-muted uppercase tracking-wider block">Song Title *</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. My Favorite Melody"
+                      value={customTitle}
+                      onChange={(e) => setCustomTitle(e.target.value)}
+                      className="w-full bg-secondary/50 border border-border/20 rounded-xl px-3 py-2 text-xs text-foreground placeholder-muted focus:outline-none focus:border-primary/25"
+                    />
+                  </div>
+                  
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-muted uppercase tracking-wider block">Artist Name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Instrumental"
+                      value={customArtist}
+                      onChange={(e) => setCustomArtist(e.target.value)}
+                      className="w-full bg-secondary/50 border border-border/20 rounded-xl px-3 py-2 text-xs text-foreground placeholder-muted focus:outline-none focus:border-primary/25"
+                    />
+                  </div>
+
+                  {/* MP3 Source Selector */}
+                  <div className="space-y-2 border-t border-border/40 pt-2.5">
+                    <label className="text-[10px] font-bold text-muted uppercase tracking-wider block">Audio Source</label>
+                    
+                    <div className="flex flex-col gap-2">
+                      {/* File Upload Selector */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          customAudioInputRef.current?.click();
+                        }}
+                        className={`w-full text-left p-3 rounded-2xl text-xs font-semibold flex items-center justify-between border cursor-pointer transition-colors ${
+                          customFile
+                            ? "border-primary bg-primary/5 text-primary"
+                            : "border-border/30 bg-secondary/30 text-foreground hover:bg-secondary"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          <Music size={14} className="text-emerald-500 shrink-0" />
+                          <span className="truncate">
+                            {customFile ? customFile.name : "Upload Audio File (MP3)"}
+                          </span>
+                        </div>
+                        {customFile && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCustomFile(null);
+                              if (customAudioInputRef.current) customAudioInputRef.current.value = "";
+                            }}
+                            className="p-1 rounded-full text-muted hover:text-rose-500 transition-colors"
+                          >
+                            <X size={14} />
+                          </button>
+                        )}
+                      </button>
+
+                      <input
+                        ref={customAudioInputRef}
+                        type="file"
+                        accept="audio/mp3,audio/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            setCustomFile(file);
+                            setCustomUrl("");
+                          }
+                        }}
+                      />
+
+                      <div className="text-center text-[10px] text-muted">OR</div>
+
+                      {/* Direct URL Input */}
+                      <input
+                        type="text"
+                        placeholder="Paste direct audio MP3 URL..."
+                        value={customUrl}
+                        onChange={(e) => {
+                          setCustomUrl(e.target.value);
+                          setCustomFile(null); // Clear file when entering URL
+                          if (customAudioInputRef.current) customAudioInputRef.current.value = "";
+                        }}
+                        className="w-full bg-secondary/50 border border-border/20 rounded-xl px-3 py-2 text-xs text-foreground placeholder-muted focus:outline-none focus:border-primary/25"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="flex gap-2.5 pt-2">
               <button
-                onClick={() => setPendingStoryFile(null)}
+                onClick={handleCancelStory}
                 className="flex-1 py-2.5 rounded-2xl border border-border hover:bg-secondary font-semibold text-xs text-foreground cursor-pointer transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={submitStory}
-                disabled={uploading}
+                disabled={uploading || (musicTab === "custom" && !customTitle.trim())}
                 className="flex-1 py-2.5 bg-primary text-primary-foreground hover:bg-primary/95 font-semibold text-xs rounded-2xl cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5 transition-all"
               >
                 {uploading ? <LoadingSpinner size={14} /> : null}
