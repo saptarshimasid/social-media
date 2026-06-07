@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Plus, X, ChevronLeft, ChevronRight, Pause, Play, Volume2, VolumeX, Music, Check } from "lucide-react";
+import { Plus, X, ChevronLeft, ChevronRight, Pause, Play, Volume2, VolumeX, Music, Check, Trash2 } from "lucide-react";
 import { useAuth } from "./auth-provider";
 import { createClient } from "@/lib/supabase";
 import { convertToWebP } from "@/lib/image-utils";
@@ -408,6 +408,32 @@ export default function StoriesBar() {
     setActiveStoryIdx(0);
     setPaused(false);
     setProgress(0);
+  };
+
+  const handleDeleteStory = async (storyId: string) => {
+    if (!user) return;
+    setPaused(true);
+    const confirmDelete = window.confirm("Are you sure you want to delete this story?");
+    if (!confirmDelete) {
+      setPaused(false);
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("stories")
+        .delete()
+        .eq("id", storyId);
+
+      if (error) throw error;
+
+      closePlayer();
+      await fetchStories();
+    } catch (err) {
+      console.error("Failed to delete story:", err);
+      alert("Failed to delete story. Please try again.");
+      setPaused(false);
+    }
   };
 
   const hasMyStory = storyGroups.some((g) => g.user_id === user?.id);
@@ -838,6 +864,15 @@ export default function StoriesBar() {
               >
                 {muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
               </button>
+              {currentStory.user_id === user?.id && (
+                <button
+                  onClick={() => handleDeleteStory(currentStory.id)}
+                  className="p-1.5 rounded-full bg-black/30 text-rose-500 hover:bg-black/50 hover:text-rose-400 transition-colors cursor-pointer shrink-0"
+                  title="Delete Story"
+                >
+                  <Trash2 size={16} />
+                </button>
+              )}
             </div>
 
             {/* Music Badge Sticker Overlay */}
