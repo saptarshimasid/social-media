@@ -478,9 +478,9 @@ export default function ProfilePage({ params }: ProfilePageProps) {
       setEditContact(false);
       setEditAddress(false);
       setEditTravel(false);
-    } catch (err) {
-      console.error("Failed to update profile field:", err);
-      alert("Failed to update field. Please try again.");
+    } catch (err: any) {
+      console.error("Failed to update profile field:", err?.message || err?.details || err);
+      alert(`Failed to update field: ${err?.message || "Please try again."}`);
     }
   };
 
@@ -518,9 +518,9 @@ export default function ProfilePage({ params }: ProfilePageProps) {
 
       await fetchProfileData();
       setEditRelationship(false);
-    } catch (err) {
-      console.error("Failed to save relationship details:", err);
-      alert("Error saving relationship status.");
+    } catch (err: any) {
+      console.error("Failed to save relationship details:", err?.message || err?.details || err);
+      alert(`Error saving relationship status: ${err?.message || "Please try again."}`);
     }
   };
 
