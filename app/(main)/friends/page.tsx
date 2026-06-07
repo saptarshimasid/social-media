@@ -42,6 +42,13 @@ export default function FriendsPage({ searchParams }: FriendsPageProps) {
 
   const supabase = createClient();
 
+  // Sync urlSearch query parameter with state
+  useEffect(() => {
+    if (urlSearch !== undefined) {
+      setSearchQuery(urlSearch || "");
+    }
+  }, [urlSearch]);
+
   // Reset pagination when search query changes
   useEffect(() => {
     setPage(0);

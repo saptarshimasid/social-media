@@ -18,12 +18,14 @@ export default function Navbar() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
+  const [showMobileSearch, setShowMobileSearch] = useState(false);
   const router = useRouter();
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
       router.push(`/friends?search=${encodeURIComponent(searchQuery.trim())}`);
+      setShowMobileSearch(false);
     }
   };
 
@@ -73,14 +75,20 @@ export default function Navbar() {
             <Store size={20} />
           </Link>
 
-          {/* Quick Find Friends Icon (Mobile) */}
-          <Link
-            href="/friends"
-            className="p-2 rounded-xl text-foreground hover:bg-secondary border border-transparent hover:border-border/40 transition-all cursor-pointer md:hidden"
+          {/* Search/Find Friends Icon (Mobile) */}
+          <button
+            onClick={() => {
+              setShowMobileSearch(!showMobileSearch);
+              setShowDropdown(false);
+              setShowNotifDropdown(false);
+            }}
+            className={`p-2 rounded-xl border border-transparent hover:border-border/40 transition-all cursor-pointer md:hidden ${
+              showMobileSearch ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20" : "text-foreground hover:bg-secondary"
+            }`}
             aria-label="Find Friends"
           >
-            <Users size={20} />
-          </Link>
+            <Search size={20} />
+          </button>
 
           {/* Theme Toggle */}
           <ThemeToggle />
@@ -294,6 +302,22 @@ export default function Navbar() {
           )}
         </div>
       </div>
+      {/* Mobile Search Bar Expand */}
+      {showMobileSearch && (
+        <div className="md:hidden border-t border-border/40 bg-background/95 px-4 py-2.5 animate-in slide-in-from-top duration-200">
+          <form onSubmit={handleSearch} className="relative w-full">
+            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+            <input
+              type="search"
+              autoFocus
+              placeholder="Search people, usernames..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full h-10 rounded-full bg-secondary pl-10 pr-4 text-sm text-foreground placeholder-muted border border-transparent focus:border-primary/40 focus:bg-background transition-all focus:outline-none"
+            />
+          </form>
+        </div>
+      )}
     </header>
   );
 }
