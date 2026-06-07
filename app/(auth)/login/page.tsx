@@ -85,6 +85,7 @@ export default function LoginPage() {
         email: email.trim(),
         password: password,
         options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
           data: {
             full_name: fullName.trim(),
             age: parsedAge,
