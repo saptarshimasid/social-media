@@ -1,21 +1,56 @@
 "use client";
 
-import React from "react";
-import { Settings, LogOut, Sun, Moon, Shield, Calendar, User, Info, Smartphone, Mail } from "lucide-react";
+import React, { useState } from "react";
+import { Settings, LogOut, Sun, Moon, Shield, Calendar, User, Info, Smartphone, Mail, AlertTriangle, Trash2, X } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { useTheme } from "@/components/theme-provider";
 import UserAvatar from "@/components/user-avatar";
 import { format } from "date-fns";
+import { createClient } from "@/lib/supabase";
+import LoadingSpinner from "@/components/loading-spinner";
 
 export default function SettingsPage() {
   const { user, profile, signOut } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [confirmUsername, setConfirmUsername] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  
+  const supabase = createClient();
 
   const handleSignOut = async () => {
     try {
       await signOut();
     } catch (err) {
       console.error("Failed to sign out:", err);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!profile?.username || confirmUsername.toLowerCase() !== profile.username.toLowerCase()) {
+      setDeleteError("Username confirmation does not match.");
+      return;
+    }
+
+    setDeleting(true);
+    setDeleteError("");
+
+    try {
+      // 1. Call the delete_user_account RPC
+      const { error: rpcError } = await supabase.rpc("delete_user_account");
+      if (rpcError) throw rpcError;
+
+      // 2. Log out locally to clear cookies and states
+      await signOut();
+
+      // 3. Redirect back to login with a success parameter
+      window.location.href = "/login?success=Account successfully deleted";
+    } catch (err: any) {
+      console.error("Failed to delete account:", err);
+      setDeleteError(err.message || "An error occurred while deleting your account.");
+      setDeleting(false);
     }
   };
 
@@ -120,7 +155,7 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* Right Side: Theme & Sign Out Control Cards */}
+        {/* Right Side: Theme & Control Cards */}
         <div className="space-y-6">
           {/* Theme Preferences */}
           <div className="bg-card border border-border/40 rounded-3xl p-6 shadow-sm glass space-y-4">
@@ -181,8 +216,93 @@ export default function SettingsPage() {
               <span>Sign Out of Account</span>
             </button>
           </div>
+
+          {/* Danger Zone */}
+          <div className="bg-card border border-rose-500/30 rounded-3xl p-6 shadow-sm glass space-y-4">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-rose-500 flex items-center gap-1.5 border-b border-rose-500/20 pb-3">
+              <AlertTriangle size={14} className="text-rose-500" />
+              Danger Zone
+            </h3>
+            <p className="text-[11px] text-muted leading-snug">
+              Permanently delete your account. This will remove all your profile data, posts, comments, photos, relationships, and is completely irreversible.
+            </p>
+            <button
+              onClick={() => {
+                setDeleteError("");
+                setConfirmUsername("");
+                setIsDeleteModalOpen(true);
+              }}
+              className="w-full flex items-center justify-center gap-2 h-11 bg-rose-500/10 hover:bg-rose-500 text-rose-500 hover:text-white font-bold rounded-2xl border border-rose-500/30 transition-all cursor-pointer active:scale-95 text-xs animate-pulse hover:animate-none"
+            >
+              <Trash2 size={14} />
+              <span>Delete Account Permanently</span>
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Delete Account Confirmation Modal */}
+      {isDeleteModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-md">
+          <div className="bg-card border border-border/30 rounded-3xl p-6 shadow-2xl max-w-md w-full glass space-y-4 animate-in scale-in duration-200">
+            <div className="flex items-center justify-between border-b border-border/40 pb-3">
+              <h3 className="font-bold text-base text-rose-500 flex items-center gap-2">
+                <AlertTriangle size={18} /> Delete Account
+              </h3>
+              <button
+                onClick={() => setIsDeleteModalOpen(false)}
+                disabled={deleting}
+                className="p-1 rounded-full text-muted hover:text-foreground transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="p-3.5 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-[11px] text-rose-500 leading-relaxed font-semibold">
+                WARNING: This action is permanent and cannot be undone. All your posts, photos, comments, messages, relationships, and account configurations will be completely deleted from our database.
+              </div>
+
+              {deleteError && (
+                <div className="p-3.5 bg-rose-500/15 border border-rose-500/30 rounded-2xl text-[11px] text-rose-500 leading-relaxed font-bold">
+                  {deleteError}
+                </div>
+              )}
+
+              <p className="text-xs text-muted leading-relaxed">
+                Please type your username <span className="font-bold text-foreground">@{profile?.username}</span> to confirm account deletion:
+              </p>
+
+              <input
+                type="text"
+                placeholder={profile?.username || "username"}
+                value={confirmUsername}
+                onChange={(e) => setConfirmUsername(e.target.value)}
+                disabled={deleting}
+                className="w-full bg-secondary/60 border border-border/25 rounded-2xl px-3.5 py-2.5 text-xs text-foreground placeholder-muted focus:outline-none focus:border-rose-500/40"
+              />
+            </div>
+
+            <div className="flex gap-2.5 pt-2">
+              <button
+                onClick={() => setIsDeleteModalOpen(false)}
+                disabled={deleting}
+                className="flex-1 py-2.5 rounded-2xl border border-border hover:bg-secondary font-semibold text-xs text-foreground cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteAccount}
+                disabled={deleting || confirmUsername.toLowerCase() !== profile?.username?.toLowerCase()}
+                className="flex-1 py-2.5 bg-rose-500 text-white hover:bg-rose-600 font-semibold text-xs rounded-2xl cursor-pointer disabled:opacity-40 flex items-center justify-center gap-1.5 transition-all"
+              >
+                {deleting ? <LoadingSpinner size={14} /> : <Trash2 size={14} />}
+                <span>{deleting ? "Deleting..." : "Permanently Delete"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
