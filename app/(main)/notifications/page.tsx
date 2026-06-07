@@ -6,7 +6,7 @@ import UserAvatar from "@/components/user-avatar";
 import EmptyState from "@/components/empty-state";
 import LoadingSpinner from "@/components/loading-spinner";
 import { formatDistanceToNow } from "date-fns";
-import { Bell, Check, Heart, MessageSquare, UserPlus, Users, Sparkles, Tag, X } from "lucide-react";
+import { Bell, Check, Heart, MessageSquare, UserPlus, Users, Cake, Tag, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 export default function NotificationsPage() {
@@ -54,7 +54,7 @@ export default function NotificationsPage() {
     if (notif.target_type === "birthday") {
       return {
         text: "has a birthday today! Comment 'Happy Birthday' with an emoji 🎂🎈🎉",
-        icon: <Sparkles className="text-pink-500 animate-pulse" size={14} />,
+        icon: <Cake className="text-pink-500 animate-pulse" size={14} />,
       };
     }
     if (notif.target_type === "relationship") {
@@ -111,7 +111,7 @@ export default function NotificationsPage() {
       default:
         return {
           text: "interacted with your profile.",
-          icon: <Sparkles className="text-amber-500" size={14} />,
+          icon: <Bell className="text-primary" size={14} />,
         };
     }
   };

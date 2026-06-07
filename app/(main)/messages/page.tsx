@@ -8,7 +8,7 @@ import { convertToWebP } from "@/lib/image-utils";
 import UserAvatar from "@/components/user-avatar";
 import EmptyState from "@/components/empty-state";
 import LoadingSpinner from "@/components/loading-spinner";
-import { Send, Image as ImageIcon, Sparkles, MessageSquare, ArrowLeft, X, Pencil, Trash2, Check, Mail } from "lucide-react";
+import { Send, Image as ImageIcon, MessageSquare, ArrowLeft, X, Pencil, Trash2, Check, Mail } from "lucide-react";
 import { format } from "date-fns";
 
 interface MessagesPageProps {
@@ -826,7 +826,7 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
                 })
               ) : (
                 <EmptyState
-                  icon={Sparkles}
+                  icon={MessageSquare}
                   title="No Messages"
                   description="Send a message to start the conversation."
                 />

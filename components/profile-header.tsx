@@ -10,7 +10,7 @@ import {
   UserCheck,
   MessageSquare,
   Camera,
-  Sparkles,
+  Image as ImageIcon,
   Move,
   Check,
   X,
@@ -341,7 +341,7 @@ export default function ProfileHeader({
           </div>
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-muted/30">
-            <Sparkles size={48} />
+            <ImageIcon size={48} />
           </div>
         )}
 

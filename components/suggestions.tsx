@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { UserPlus, Sparkles } from "lucide-react";
+import { UserPlus } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { useAuth, Profile } from "./auth-provider";
 import UserAvatar from "./user-avatar";
@@ -43,7 +43,7 @@ export default function Suggestions() {
   return (
     <aside className="hidden lg:flex flex-col w-80 border-l border-border/40 p-5 gap-4 shrink-0 h-[calc(100vh-4rem)] sticky top-16 bg-background/50 overflow-y-auto">
       <div className="flex items-center gap-2 text-sm font-semibold text-foreground/80">
-        <Sparkles size={16} className="text-amber-500" />
+        <UserPlus size={16} className="text-primary" />
         <span>People You May Know</span>
       </div>
 

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { Film, Image as ImageIcon, Sparkles, X, Globe, Tag, Search } from "lucide-react";
+import { Film, Image as ImageIcon, PenSquare, X, Globe, Tag, Search } from "lucide-react";
 import { useAuth } from "./auth-provider";
 import { createClient } from "@/lib/supabase";
 import { convertToWebP } from "@/lib/image-utils";
@@ -268,7 +268,7 @@ export default function CreatePostBox({ onPostCreated, groupId }: CreatePostBoxP
             {/* Header */}
             <div className="flex items-center justify-between pb-3 border-b border-border/40 mb-4 shrink-0">
               <h2 className="text-lg font-bold text-foreground flex items-center gap-1.5">
-                <Sparkles size={18} className="text-amber-500" />
+                <PenSquare size={18} className="text-primary" />
                 {isReel ? "Create Short Reel" : "Create Post"}
               </h2>
               <button

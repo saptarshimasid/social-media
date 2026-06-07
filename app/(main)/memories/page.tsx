@@ -8,7 +8,7 @@ import PostCard, { Post } from "@/components/post-card";
 import UserAvatar from "@/components/user-avatar";
 import { createClient } from "@/lib/supabase";
 import { convertToWebP } from "@/lib/image-utils";
-import { History, Sparkles, X, Globe, Calendar, Image as ImageIcon, Check, Info } from "lucide-react";
+import { History, X, Globe, Calendar, Image as ImageIcon, Check, Info } from "lucide-react";
 
 interface MediaPreview {
   file: File;
@@ -294,7 +294,7 @@ export default function MemoriesPage() {
         {/* Right column: Create Memory Form */}
         <div className="space-y-6">
           <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
-            <Sparkles size={18} className="text-amber-500" />
+            <Calendar size={18} className="text-primary" />
             Add to Memories
           </h2>
 

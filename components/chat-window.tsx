@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase";
 import { convertToWebP } from "@/lib/image-utils";
 import UserAvatar from "./user-avatar";
 import LoadingSpinner from "./loading-spinner";
-import { Send, Image as ImageIcon, X, ArrowLeft, MessageSquare, Search, Sparkles, Pencil, Trash2, Check, Mail } from "lucide-react";
+import { Send, Image as ImageIcon, X, ArrowLeft, MessageSquare, Search, Pencil, Trash2, Check, Mail } from "lucide-react";
 import { format } from "date-fns";
 
 interface DBMessage {
@@ -481,7 +481,7 @@ export default function ChatWindow() {
               })
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-muted p-4 text-center">
-                <Sparkles size={24} className="text-muted/40 mb-2" />
+                <MessageSquare size={24} className="text-muted/40 mb-2" />
                 <p className="text-[10px] font-semibold">Start chatting with {activePartner.full_name}</p>
               </div>
             )}

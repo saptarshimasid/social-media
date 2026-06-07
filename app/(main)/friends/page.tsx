@@ -7,7 +7,7 @@ import UserAvatar from "@/components/user-avatar";
 import FriendButton from "@/components/friend-button";
 import EmptyState from "@/components/empty-state";
 import LoadingSpinner from "@/components/loading-spinner";
-import { Search, Sparkles, UserCheck, Users } from "lucide-react";
+import { Search, UserCheck, Users } from "lucide-react";
 import Link from "next/link";
 
 interface FriendsPageProps {
@@ -272,7 +272,7 @@ export default function FriendsPage({ searchParams }: FriendsPageProps) {
           {/* Results section */}
           <div className="space-y-4">
             <h2 className="text-sm font-semibold text-foreground/80 flex items-center gap-2 px-1">
-              <Sparkles size={16} className="text-amber-500" />
+              <Users size={16} className="text-primary" />
               <span>{searchQuery.trim() ? "Search Results" : "People You May Know"}</span>
             </h2>
 

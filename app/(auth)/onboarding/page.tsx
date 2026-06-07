@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, Image as ImageIcon, Sparkles, User, FileText, CheckCircle2, AlertTriangle, LogOut } from "lucide-react";
+import { Camera, Image as ImageIcon, AtSign, User, FileText, CheckCircle2, AlertTriangle, LogOut } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { createClient } from "@/lib/supabase";
 import ThemeToggle from "@/components/theme-toggle";
@@ -276,7 +276,7 @@ export default function OnboardingPage() {
 
               <div>
                 <label className="block text-xs font-semibold text-muted mb-2 flex items-center gap-1.5">
-                  <Sparkles size={14} />
+                  <AtSign size={14} />
                   <span>Username *</span>
                 </label>
                 <div className="relative flex rounded-2xl bg-secondary border border-border focus-within:border-primary overflow-hidden transition-colors">

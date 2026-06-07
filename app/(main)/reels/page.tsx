@@ -1,7 +1,7 @@
 "use client";
 
 import React, { use, useEffect, useState, useRef, useCallback } from "react";
-import { Plus, Video, Film, Sparkles, AlertCircle, X, Loader2 } from "lucide-react";
+import { Plus, Video, Film, AlertCircle, X, Loader2 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { createClient } from "@/lib/supabase";
 import LoadingSpinner from "@/components/loading-spinner";
@@ -379,7 +379,7 @@ export default function ReelsPage({ searchParams }: ReelsPageProps) {
                   disabled={!uploadFile}
                   className="w-full h-11 bg-primary text-primary-foreground text-xs font-bold rounded-xl hover:bg-primary/95 transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
                 >
-                  <Sparkles size={14} />
+                  <Video size={14} />
                   <span>Share Reel Snap</span>
                 </button>
               )}

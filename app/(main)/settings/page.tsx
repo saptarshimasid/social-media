@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Settings, LogOut, Sun, Moon, Shield, Sparkles, User, Info, Smartphone, Mail } from "lucide-react";
+import { Settings, LogOut, Sun, Moon, Shield, Calendar, User, Info, Smartphone, Mail } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { useTheme } from "@/components/theme-provider";
 import UserAvatar from "@/components/user-avatar";
@@ -60,7 +60,7 @@ export default function SettingsPage() {
                   @{profile.username}
                 </p>
                 <div className="flex items-center gap-1.5 mt-2.5 text-[10px] text-muted">
-                  <Sparkles size={12} className="text-primary" />
+                  <Calendar size={12} className="text-primary" />
                   <span>Joined {joinedDate}</span>
                 </div>
               </div>
