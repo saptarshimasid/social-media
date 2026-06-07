@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Search, Bell, MessageSquare, LogOut, User, Settings, Users, UsersRound, Store } from "lucide-react";
@@ -10,6 +10,7 @@ import { useChat } from "./chat-provider";
 import { createClient } from "@/lib/supabase";
 import UserAvatar from "./user-avatar";
 import ThemeToggle from "./theme-toggle";
+import LoadingSpinner from "./loading-spinner";
 
 export default function Navbar() {
   const { profile, signOut, refreshProfile } = useAuth();
@@ -19,14 +20,62 @@ export default function Navbar() {
   const [showDropdown, setShowDropdown] = useState(false);
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
   const [showMobileSearch, setShowMobileSearch] = useState(false);
+  
+  // Real-time suggestions states
+  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+
   const router = useRouter();
+  const supabase = createClient();
+
+  // Debounced effect to fetch search suggestions
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    const fetchSuggestions = async () => {
+      setLoadingSuggestions(true);
+      try {
+        const query = searchQuery.trim();
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("id, full_name, username, profile_picture_url")
+          .or(`full_name.ilike.%${query}%,username.ilike.%${query}%`)
+          .limit(5);
+
+        if (!error && data) {
+          setSuggestions(data);
+          setShowSuggestions(true);
+        }
+      } catch (err) {
+        console.error("Error fetching suggestions:", err);
+      } finally {
+        setLoadingSuggestions(false);
+      }
+    };
+
+    const timer = setTimeout(fetchSuggestions, 250); // 250ms debounce
+    return () => clearTimeout(timer);
+  }, [searchQuery, supabase]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
       router.push(`/friends?search=${encodeURIComponent(searchQuery.trim())}`);
       setShowMobileSearch(false);
+      setShowSuggestions(false);
     }
+  };
+
+  const handleSuggestionClick = (username: string) => {
+    router.push(`/profile/${username}`);
+    setSearchQuery("");
+    setShowSuggestions(false);
+    setShowMobileSearch(false);
   };
 
   return (
@@ -42,7 +91,7 @@ export default function Navbar() {
         </div>
 
         {/* Center: Search Bar */}
-        <div className="hidden md:flex items-center justify-center flex-initial w-full max-w-md mx-4">
+        <div className="hidden md:flex items-center justify-center flex-initial w-full max-w-md mx-4 relative">
           <form onSubmit={handleSearch} className="relative w-full">
             <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
             <input
@@ -50,9 +99,49 @@ export default function Navbar() {
               placeholder="Search people, usernames..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={() => {
+                if (suggestions.length > 0) setShowSuggestions(true);
+              }}
               className="w-full h-10 rounded-full bg-secondary pl-10 pr-4 text-sm text-foreground placeholder-muted border border-transparent focus:border-primary/40 focus:bg-background transition-all focus:outline-none"
             />
           </form>
+
+          {/* Suggestions Dropdown (Desktop) */}
+          {showSuggestions && (
+            <>
+              <div
+                className="fixed inset-0 z-40 cursor-default"
+                onClick={() => setShowSuggestions(false)}
+              />
+              <div className="absolute top-12 left-0 right-0 rounded-2xl border border-border bg-card p-2 shadow-lg z-50 animate-in fade-in slide-in-from-top-2 duration-150 glass max-h-72 overflow-y-auto">
+                {loadingSuggestions ? (
+                  <div className="flex items-center justify-center py-4 text-xs text-muted">
+                    <LoadingSpinner size={16} className="mr-2" /> Searching...
+                  </div>
+                ) : suggestions.length > 0 ? (
+                  <div className="space-y-0.5">
+                    {suggestions.map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => handleSuggestionClick(p.username)}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs hover:bg-secondary text-left transition-colors cursor-pointer"
+                      >
+                        <UserAvatar src={p.profile_picture_url} name={p.full_name} size={28} />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-foreground truncate">{p.full_name}</p>
+                          <p className="text-[10px] text-muted truncate">@{p.username}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-4 text-center text-xs text-muted leading-relaxed">
+                    No people found matching &quot;{searchQuery}&quot;
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
 
         {/* Right: Actions */}
@@ -304,7 +393,7 @@ export default function Navbar() {
       </div>
       {/* Mobile Search Bar Expand */}
       {showMobileSearch && (
-        <div className="md:hidden border-t border-border/40 bg-background/95 px-4 py-2.5 animate-in slide-in-from-top duration-200">
+        <div className="md:hidden border-t border-border/40 bg-background/95 px-4 py-2.5 animate-in slide-in-from-top duration-200 relative">
           <form onSubmit={handleSearch} className="relative w-full">
             <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
             <input
@@ -313,9 +402,49 @@ export default function Navbar() {
               placeholder="Search people, usernames..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={() => {
+                if (suggestions.length > 0) setShowSuggestions(true);
+              }}
               className="w-full h-10 rounded-full bg-secondary pl-10 pr-4 text-sm text-foreground placeholder-muted border border-transparent focus:border-primary/40 focus:bg-background transition-all focus:outline-none"
             />
           </form>
+
+          {/* Suggestions Dropdown (Mobile) */}
+          {showSuggestions && (
+            <>
+              <div
+                className="fixed inset-0 z-40 cursor-default"
+                onClick={() => setShowSuggestions(false)}
+              />
+              <div className="absolute top-14 left-4 right-4 rounded-2xl border border-border bg-card p-2 shadow-lg z-50 animate-in fade-in slide-in-from-top-2 duration-150 glass max-h-72 overflow-y-auto">
+                {loadingSuggestions ? (
+                  <div className="flex items-center justify-center py-4 text-xs text-muted">
+                    <LoadingSpinner size={16} className="mr-2" /> Searching...
+                  </div>
+                ) : suggestions.length > 0 ? (
+                  <div className="space-y-0.5">
+                    {suggestions.map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => handleSuggestionClick(p.username)}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs hover:bg-secondary text-left transition-colors cursor-pointer"
+                      >
+                        <UserAvatar src={p.profile_picture_url} name={p.full_name} size={28} />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-foreground truncate">{p.full_name}</p>
+                          <p className="text-[10px] text-muted truncate">@{p.username}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-4 text-center text-xs text-muted leading-relaxed">
+                    No people found matching &quot;{searchQuery}&quot;
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
     </header>
