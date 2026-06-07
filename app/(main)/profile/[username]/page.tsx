@@ -528,58 +528,17 @@ export default function ProfilePage({ params }: ProfilePageProps) {
   const handleRelationshipApproval = async (requestor: any, approve: boolean) => {
     if (!user) return;
     try {
-      if (approve) {
-        // 1. Approve initiator's profile
-        const { error: err1 } = await supabase
-          .from("profiles")
-          .update({ relationship_approved: true })
-          .eq("id", requestor.id);
-        if (err1) throw err1;
-
-        // 2. Set own profile to matched status
-        const { error: err2 } = await supabase
-          .from("profiles")
-          .update({
-            relationship_status: requestor.relationship_status,
-            relationship_partner_id: requestor.id,
-            relationship_approved: true,
-          })
-          .eq("id", user.id);
-        if (err2) throw err2;
-
-        // 3. Create a feed post about the event
-        const relLabel = requestor.relationship_status === "married" ? "married" : "engaged";
-        await supabase.from("posts").insert({
-          user_id: requestor.id,
-          content: `is now ${relLabel} to @${viewedProfile?.username}! 💍❤️`,
-          type: "text",
-        });
-
-        // 4. Notify requestor
-        await insertNotification({
-          user_id: requestor.id,
-          sender_id: user.id,
-          type: "friend_accept",
-          target_type: "relationship_accept",
-          target_id: user.id,
-        });
-      } else {
-        // Decline relationship request: reset requestor's status
-        const { error } = await supabase
-          .from("profiles")
-          .update({
-            relationship_status: null,
-            relationship_partner_id: null,
-            relationship_approved: false,
-          })
-          .eq("id", requestor.id);
-        if (error) throw error;
-      }
+      const { error } = await supabase.rpc("handle_relationship_response", {
+        requestor_id: requestor.id,
+        approve: approve,
+      });
+      if (error) throw error;
 
       // Re-fetch profile data to clear request banners
       await fetchProfileData();
-    } catch (err) {
-      console.error("Failed handling relationship request:", err);
+    } catch (err: any) {
+      console.error("Failed handling relationship request:", err?.message || err);
+      alert(`Error responding to request: ${err?.message || "Please try again."}`);
     }
   };
 

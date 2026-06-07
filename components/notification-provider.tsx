@@ -1,8 +1,44 @@
 "use client";
-
-import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
+ 
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { useAuth } from "./auth-provider";
 import { createClient } from "@/lib/supabase";
+import { useChat } from "./chat-provider";
+
+// Premium sound chime generator using browser Web Audio API
+const playNotificationChime = () => {
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    
+    const audioCtx = new AudioContextClass();
+    
+    const playTone = (freq: number, startTime: number, duration: number) => {
+      const osc = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+      
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, startTime);
+      
+      gainNode.gain.setValueAtTime(0.12, startTime);
+      // Exponential volume decay for a clean bell-like sound
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+      
+      osc.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      
+      osc.start(startTime);
+      osc.stop(startTime + duration);
+    };
+    
+    const now = audioCtx.currentTime;
+    // Chime pattern: C5 (523.25Hz) followed by G5 (783.99Hz)
+    playTone(523.25, now, 0.15);
+    playTone(783.99, now + 0.08, 0.25);
+  } catch (err) {
+    console.warn("Could not play notification sound:", err);
+  }
+};
 
 export interface DBNotification {
   id: string;
@@ -38,6 +74,14 @@ const NotificationContext = createContext<NotificationContextType | undefined>(u
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
+  const chat = useChat();
+  const chatRef = useRef(chat);
+  
+  // Sync the latest chat state ref
+  useEffect(() => {
+    chatRef.current = chat;
+  }, [chat]);
+
   const [notifications, setNotifications] = useState<DBNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [unreadChatCount, setUnreadChatCount] = useState(0);
@@ -395,6 +439,23 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           if (newRow.type === "message") {
             setUnreadChatCount((prev) => prev + 1);
             setChatNotifications((prev) => [newNotif, ...prev]);
+
+            // 1. Play chime sound
+            playNotificationChime();
+
+            // 2. Open chat drawer if not already chatting on a page like /messages
+            const currentChat = chatRef.current;
+            const isMessagesPage = typeof window !== "undefined" && window.location.pathname === "/messages";
+            if (!isMessagesPage && (!currentChat.isOpen || !currentChat.activePartner || currentChat.activePartner.id !== newRow.sender_id)) {
+              const partner = {
+                id: newRow.sender_id,
+                full_name: senderProfile?.full_name || "Someone",
+                username: senderProfile?.username || "user",
+                profile_picture_url: senderProfile?.profile_picture_url || null,
+                online_status: "online",
+              };
+              currentChat.openChatWith(partner);
+            }
           } else {
             setUnreadCount((prev) => prev + 1);
             setNotifications((prev) => [newNotif, ...prev].slice(0, 40));

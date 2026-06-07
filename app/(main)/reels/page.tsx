@@ -1,6 +1,7 @@
 "use client";
 
 import React, { use, useEffect, useState, useRef, useCallback } from "react";
+import Link from "next/link";
 import { Plus, Video, Film, AlertCircle, X, Loader2 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { createClient } from "@/lib/supabase";
@@ -210,11 +211,20 @@ export default function ReelsPage({ searchParams }: ReelsPageProps) {
   return (
     <div className="flex flex-col items-center justify-center h-[calc(100vh-8rem)] relative overflow-hidden bg-background/5 p-4 md:p-6 animate-in fade-in duration-300">
       {/* 1. Header Toolbar */}
-      <div className="absolute top-0 inset-x-0 h-14 shrink-0 flex items-center justify-between px-2 md:px-6 z-10">
-        <h1 className="text-md font-extrabold tracking-tight text-foreground flex items-center gap-1.5 select-none">
-          <Film size={18} className="text-primary" />
-          <span>SocialConnect Reels</span>
-        </h1>
+      <div className="absolute top-0 inset-x-0 h-14 shrink-0 flex items-center justify-between px-2 md:px-6 z-10 bg-gradient-to-b from-background/80 to-transparent backdrop-blur-[2px]">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/"
+            className="p-2 border border-border/40 rounded-2xl hover:bg-secondary text-muted hover:text-foreground cursor-pointer transition-colors shadow-sm bg-card"
+            title="Go back to Home"
+          >
+            <X size={14} />
+          </Link>
+          <h1 className="text-md font-extrabold tracking-tight text-foreground flex items-center gap-1.5 select-none">
+            <Film size={18} className="text-primary" />
+            <span>SocialConnect Reels</span>
+          </h1>
+        </div>
         
         <button
           onClick={() => setShowUploadModal(true)}
@@ -374,14 +384,24 @@ export default function ReelsPage({ searchParams }: ReelsPageProps) {
                   </div>
                 </div>
               ) : (
-                <button
-                  type="submit"
-                  disabled={!uploadFile}
-                  className="w-full h-11 bg-primary text-primary-foreground text-xs font-bold rounded-xl hover:bg-primary/95 transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
-                >
-                  <Video size={14} />
-                  <span>Share Reel Snap</span>
-                </button>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={closeModal}
+                    className="flex-1 h-11 border border-border hover:bg-secondary text-foreground text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <X size={14} />
+                    <span>Cancel</span>
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!uploadFile}
+                    className="flex-1 h-11 bg-primary text-primary-foreground text-xs font-bold rounded-xl hover:bg-primary/95 transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  >
+                    <Video size={14} />
+                    <span>Share Reel Snap</span>
+                  </button>
+                </div>
               )}
             </form>
           </div>
